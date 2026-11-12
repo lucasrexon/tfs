@@ -1,0 +1,78 @@
+# TFS configuration. Every number that changes a result lives here, so the
+# rules are written down BEFORE the backtest is looked at.
+
+data:
+  base_url: https://api.massive.com      # Massive (formerly Polygon.io); api.polygon.io also works
+  api_key_env: MASSIVE_API_KEY           # locally: export MASSIVE_API_KEY=...  (in the cloud the proxy adds it)
+  cache_dir: data_cache
+  # FREE Massive plan: 2 years of history, 5 requests/minute.
+  # After upgrading to Stocks Starter: start "2021-11-01", max_requests_per_minute 0,
+  # build_end "2025-10-31" (4 years to build, last year sealed).
+  start: "2024-11-11"
+  end: "2026-11-10"
+  max_requests_per_minute: 5
+  stock_types: [CS, ADRC]                # common stock + ADRs. No ETFs, warrants, units, rights. OTC excluded.
+
+scan:
+  min_premarket_gap: 0.50                # +50% vs prior close, measured at the cutoff
+  premarket_cutoff: "09:25"
+  min_price: 1.00                        # real dollars, pre-market price at the cutoff
+  min_premarket_volume: 500000           # real shares traded 04:00 to cutoff
+  stage1_open_ratio: 1.25                # daily pre-filter: open >= 1.25x prior close ...
+  stage1_high_ratio: 1.50                # ... or high >= 1.5x prior close
+
+split:
+  build_end: "2025-11-10"                # build/tune on the first year; test ONCE on the second
+
+rules:
+  entries: [open, first_red_5m, vwap_loss, pmh_fail, next_open]
+  exits: [eod, time_stop_1100, next_open, close_d2, close_d3]
+  stops: [none, pmh_plus_5]
+  pmh_stop_buffer: 0.05                  # stop = pre-market high (or day-1 high for next_open) + 5%
+  pmh_touch_pct: 0.02                    # "retest" = high comes within 2% of PMH
+  entry_deadline: "11:30"                # no new entries after this
+  time_stop: "11:00"
+  eod_exit: "15:55"
+
+costs:
+  commission_per_share: 0.005
+  commission_min: 1.00
+  slippage_pct: 0.005                    # per side, fraction of price
+  min_slippage: 0.01                     # dollars per share per side
+  stop_extra_slippage_pct: 0.03          # stops fill 3% worse than planned
+  ssr_extra_slippage_pct: 0.01           # short-sale restriction active: worse entry
+  borrow_fee_annual: 1.00                # 100%/yr, charged per calendar day held overnight
+  locate_fee_per_share: 0.03
+
+dnt:                                     # Do Not Touch
+  max_halts_before_entry: 2
+  min_days_since_ipo: 180
+  likely_htb_gap: 2.00                   # proxy for hard-to-borrow: gap >= +200% ...
+  likely_htb_rotation: 3.0               # ... or float rotation >= 3x
+
+risk:
+  starting_equity: 10000
+  risk_per_trade: 0.005                  # 0.5% of equity at risk to the stop
+  max_position_pct_no_stop: 0.10         # rules without a stop: position = 10% of equity
+  daily_loss_limit: 0.02
+  max_short_exposure: 0.50
+  max_trades_per_day: 3
+  margin_rule: finra                     # finra | house5
+
+report:
+  min_trades: 30                         # rules with fewer build trades are not ranked
+
+# Rules to run on the untouched 2024-11..2026-11 test period. Fill this in
+# AFTER reading the build report, then run `python -m tfs holdout` once.
+# Format: entry|exit|stop, e.g. "vwap_loss|eod|pmh_plus_5"
+holdout_rules: []
+
+live:
+  mode: paper                            # paper | live   (live trades the account owner's real money)
+  rule: "vwap_loss|eod|pmh_plus_5"       # the ONE rule the bot trades; set after the holdout
+  auto_approve: false                    # false = the account owner types YES for every order
+  data_feed: sip                         # sip (paid, needed for real volume) | iex (free, ~2.5% of volume)
+  poll_seconds: 20
+  journal: journal/live_journal.csv      # append-only log of every decision
+  kill_switch_file: STOP                 # create a file named STOP to block all new orders
+  allow_overnight: false                 # live bot flattens everything at eod_exit
