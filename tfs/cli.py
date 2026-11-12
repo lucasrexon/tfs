@@ -38,11 +38,20 @@ def _out(cfg, synthetic) -> Path:
 
 
 def _tick(every=50):
+    """Progress line with percent done and time left (when the total is known)."""
     t0 = time.time()
 
     def f(i, *info):
-        if i % every == 0:
-            print(f"  [{time.time() - t0:6.0f}s] {i} {' '.join(map(str, info))}", flush=True)
+        if i % every:
+            return
+        el = time.time() - t0
+        total = info[0] if info and isinstance(info[0], int) else None
+        if total and i:
+            left = el / i * (total - i)
+            msg = f"{i:,}/{total:,} ({i / total:.0%})  about {left / 3600:.1f} h left  {' '.join(map(str, info[1:]))}"
+        else:
+            msg = f"{i} {' '.join(map(str, info))}"
+        print(f"  [{datetime.now():%H:%M}] {msg}", flush=True)
     return f
 
 
@@ -57,6 +66,13 @@ def cmd_scan(cfg, synthetic=False, then=None):
     print(f"  {len(uni):,} tickers")
     if hasattr(c, "preload_splits"):
         print(f"  {c.preload_splits(cfg['data']['start'])} splits loaded in bulk")
+    key = {k: cfg["data"][k] for k in ("start", "end")} | \
+          {k: sc[k] for k in ("stage1_open_ratio", "stage1_high_ratio", "min_price", "min_premarket_volume")}
+    meta_f = out / "candidates_meta.json"
+    if (out / "candidates.parquet").exists() and meta_f.exists() and json.loads(meta_f.read_text()) == key:
+        cands = pd.read_parquet(out / "candidates.parquet")
+        print(f"Stage 1: reusing saved candidate list ({len(cands):,})")
+        return _stage2_passes(c, cfg, out, cands, then)
     print("Stage 1: daily bars for the whole market ...")
     cands = stage1(c, cfg, uni, progress=_tick(100))
     # Necessary conditions, no false negatives: pre-market volume >= X needs day volume >= X,
@@ -65,13 +81,20 @@ def cmd_scan(cfg, synthetic=False, then=None):
     cands = cands[(cands["d_volume"] / pd.Series(f, index=cands.index) >= sc["min_premarket_volume"]) &
                   (cands["d_high"] * pd.Series(f, index=cands.index) >= sc["min_price"])]
     cands.to_parquet(out / "candidates.parquet")
+    meta_f.write_text(json.dumps(key))
+    return _stage2_passes(c, cfg, out, cands, then)
+
+
+def _stage2_passes(c, cfg, out, cands, then):
+    from tfs.scan import stage2
+    sc = cfg["scan"]
     tier1 = cands[cands["d_open"] >= sc["pass1_open_ratio"] * cands["prev_close"]]
     tier2 = cands.drop(tier1.index)
     print(f"  {len(cands):,} candidates: pass 1 {len(tier1):,} (opened >= {sc['pass1_open_ratio']}x), pass 2 {len(tier2):,}")
     found = []
     for name, part in (("pass 1", tier1), ("pass 2", tier2)):
         print(f"Stage 2 {name}: minute bars, +50% at 09:25 check ...")
-        g = stage2(c, cfg, part, progress=_tick(100))
+        g = stage2(c, cfg, part, progress=_tick(25))
         found.append(g.assign(scan_pass=name))
         allg = pd.concat(found, ignore_index=True)
         allg.to_parquet(out / "gappers.parquet")
@@ -138,6 +161,16 @@ def cmd_holdout(cfg, synthetic=False):
     cmd_report(cfg, synthetic, res, len(log))
 
 
+def _done(report_path):
+    """Make 'finished' impossible to miss: banner, bell, and open the report in the browser."""
+    import webbrowser
+    print("\a\n" + "=" * 60 + f"\n  DONE. Report: {report_path}\n" + "=" * 60, flush=True)
+    try:
+        webbrowser.open(Path(report_path).resolve().as_uri())
+    except Exception:
+        pass
+
+
 def demo_config(cfg):
     cfg = json.loads(json.dumps(cfg))
     cfg["data"].update(start="2023-01-02", end="2024-12-31")
@@ -166,7 +199,7 @@ def main(argv=None):
     if syn:
         cfg = demo_config(cfg)
     if a.command == "demo":
-        cmd_scan(cfg, syn); cmd_backtest(cfg, syn); cmd_report(cfg, syn)
+        cmd_scan(cfg, syn); cmd_backtest(cfg, syn); _done(cmd_report(cfg, syn))
     elif a.command == "download":
         from tfs.scan import trading_days
         c = _client(cfg, syn)
@@ -181,7 +214,7 @@ def main(argv=None):
     elif a.command == "report":
         cmd_report(cfg, syn)
     elif a.command == "run":
-        cmd_scan(cfg, syn, then=lambda: (cmd_backtest(cfg, syn), cmd_report(cfg, syn)))
+        cmd_scan(cfg, syn, then=lambda: (cmd_backtest(cfg, syn), _done(cmd_report(cfg, syn))))
     elif a.command == "holdout":
         cmd_holdout(cfg, syn)
     elif a.command in ("card", "bot"):

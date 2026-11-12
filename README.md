@@ -14,6 +14,29 @@ python -m tfs bot         # live: the trading bot
 python -m pytest          # 21 tests, incl. a live-vs-backtest replay
 ```
 
+## Run it on your own computer (no Claude needed)
+
+1. **Install Python 3.10 or newer** from python.org. On Windows, tick "Add Python to PATH" in the installer.
+2. **Open a terminal** (Mac: Terminal app; Windows: PowerShell) and run these one at a time:
+   ```bash
+   git clone https://github.com/lucasrexon/tfs
+   cd tfs
+   pip3 install -r requirements.txt
+   python3 -m tfs demo
+   ```
+   The demo opens a fake-data report in your browser. If it does, everything works.
+   No `git`? Download the ZIP from the GitHub page (green "Code" button) and unzip it instead.
+3. **Optional head start:** unzip `tfs_head_start.zip` *inside* the `tfs` folder. It skips the
+   downloads already done in the cloud session.
+4. **Add your Massive key** (massive.com, Dashboard, API Keys) and start:
+   - Mac: `export MASSIVE_API_KEY=your_key` then `caffeinate -i python3 -m tfs run` (caffeinate stops the Mac sleeping)
+   - Windows: `$env:MASSIVE_API_KEY="your_key"` then `python -m tfs run` (set Sleep to "Never" while it runs)
+
+**Progress:** every 25 stocks it prints a line like `[23:40] 525/2,552 (21%) about 9.8 h left`.
+**Done:** it beeps, prints `DONE`, and opens `reports/report.html` in your browser.
+**Interrupted?** (closed the window, computer restarted) Run the same command again. Everything
+downloaded is saved in `data_cache/`, so it continues where it stopped.
+
 ## Part 1: research (5 years)
 
 **Needs:** a Massive Stocks Starter plan ($29/month, massive.com; an adult opens it). The free plan only has 2 years of history at 5 calls/minute.

@@ -8,3 +8,4 @@ run.log
 __pycache__/
 .pytest_cache/
 STOP
+tfs_head_start.zip
