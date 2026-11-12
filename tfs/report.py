@@ -109,6 +109,10 @@ def build_report(cfg, gappers, feats, trades, synthetic: bool, holdout: pd.DataF
     if synthetic:
         parts.append("<div class='banner'>SYNTHETIC DEMO DATA. These numbers come from a fake market used to test the "
                      "software. They say nothing about real stocks.</div>")
+    if "scan_pass" in gappers and set(gappers["scan_pass"]) == {"pass 1"}:
+        parts.append("<div class='banner'>Partial scan: only stocks that opened 30%+ above the prior close have been "
+                     "checked so far (pass 1). Pass 2 adds gappers that fell back before the open; until it finishes, "
+                     "results may be slightly too kind to shorting.</div>")
     parts.append(f"<p>Every US-listed common stock up {cfg['scan']['min_premarket_gap']:.0%}+ at "
                  f"{cfg['scan']['premarket_cutoff']} ET with ≥ ${cfg['scan']['min_price']:.2f} price and ≥ "
                  f"{cfg['scan']['min_premarket_volume']:,} pre-market shares, {cfg['data']['start']} to {cfg['data']['end']}. "

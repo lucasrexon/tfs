@@ -46,23 +46,39 @@ def _tick(every=50):
     return f
 
 
-def cmd_scan(cfg, synthetic=False):
+def cmd_scan(cfg, synthetic=False, then=None):
+    """Stage 1, then stage 2 in two passes. `then` runs after each pass (backtest + report)."""
+    from tfs.data.massive import split_factor
     from tfs.scan import stage1, stage2
     c, out = _client(cfg, synthetic), _out(cfg, synthetic)
+    sc = cfg["scan"]
     print("Universe: listed + delisted common stocks ...")
     uni = c.tickers(cfg["data"]["stock_types"])
     print(f"  {len(uni):,} tickers")
-    print("Stage 1: daily bars for the whole market ...")
-    cands = stage1(c, cfg, uni, progress=_tick(100))
-    cands.to_parquet(out / "candidates.parquet")
-    print(f"  {len(cands):,} daily candidates")
     if hasattr(c, "preload_splits"):
         print(f"  {c.preload_splits(cfg['data']['start'])} splits loaded in bulk")
-    print("Stage 2: minute bars, +50% at 09:25 check ...")
-    g = stage2(c, cfg, cands, progress=_tick(200))
-    g.to_parquet(out / "gappers.parquet")
-    print(f"  {len(g):,} real pre-market gappers  ({getattr(c, 'calls', '?')} API calls)")
-    return g
+    print("Stage 1: daily bars for the whole market ...")
+    cands = stage1(c, cfg, uni, progress=_tick(100))
+    # Necessary conditions, no false negatives: pre-market volume >= X needs day volume >= X,
+    # and a $1 pre-market price needs a day high >= $1 (both in real, split-unadjusted terms).
+    f = [split_factor(c.splits(t), d) for t, d in zip(cands["ticker"], cands["date"])]
+    cands = cands[(cands["d_volume"] / pd.Series(f, index=cands.index) >= sc["min_premarket_volume"]) &
+                  (cands["d_high"] * pd.Series(f, index=cands.index) >= sc["min_price"])]
+    cands.to_parquet(out / "candidates.parquet")
+    tier1 = cands[cands["d_open"] >= sc["pass1_open_ratio"] * cands["prev_close"]]
+    tier2 = cands.drop(tier1.index)
+    print(f"  {len(cands):,} candidates: pass 1 {len(tier1):,} (opened >= {sc['pass1_open_ratio']}x), pass 2 {len(tier2):,}")
+    found = []
+    for name, part in (("pass 1", tier1), ("pass 2", tier2)):
+        print(f"Stage 2 {name}: minute bars, +50% at 09:25 check ...")
+        g = stage2(c, cfg, part, progress=_tick(100))
+        found.append(g.assign(scan_pass=name))
+        allg = pd.concat(found, ignore_index=True)
+        allg.to_parquet(out / "gappers.parquet")
+        print(f"  {name}: {len(g):,} gappers ({len(allg):,} total, {getattr(c, 'calls', '?')} API calls)")
+        if then:
+            then()
+    return allg
 
 
 def cmd_backtest(cfg, synthetic=False):
@@ -165,7 +181,7 @@ def main(argv=None):
     elif a.command == "report":
         cmd_report(cfg, syn)
     elif a.command == "run":
-        cmd_scan(cfg, syn); cmd_backtest(cfg, syn); cmd_report(cfg, syn)
+        cmd_scan(cfg, syn, then=lambda: (cmd_backtest(cfg, syn), cmd_report(cfg, syn)))
     elif a.command == "holdout":
         cmd_holdout(cfg, syn)
     elif a.command in ("card", "bot"):

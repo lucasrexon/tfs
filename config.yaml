@@ -20,6 +20,7 @@ scan:
   min_premarket_volume: 500000           # real shares traded 04:00 to cutoff
   stage1_open_ratio: 1.25                # daily pre-filter: open >= 1.25x prior close ...
   stage1_high_ratio: 1.50                # ... or high >= 1.5x prior close
+  pass1_open_ratio: 1.30                 # stage 2 checks these first (opened >= +30%); the rest in pass 2
 
 split:
   build_end: "2025-11-10"                # build/tune on the first year; test ONCE on the second
