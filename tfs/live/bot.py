@@ -1,6 +1,8 @@
 """The trading bot. Runs on the ACCOUNT OWNER's computer, during market hours.
 
-  09:25  scan the whole market for +50% pre-market gappers, print a card for each
+  09:25  scan the whole market for +50% pre-market gappers, drop what the backtest
+         drops (not common stock/ADR, IPO under 6 months, split today), print a card
+         for each one left
   09:30  watch each gapper; when the chosen rule fires on a just-finished bar, size
          the short with the same code the backtest uses, pass the guard, ask the
          owner (unless auto_approve), send a market short with a broker-side stop
@@ -13,12 +15,12 @@ Everything is written to the journal. Paper trading unless config live.mode is
 from __future__ import annotations
 
 import time
-from datetime import datetime
+from datetime import date as Date, datetime
 
 import pandas as pd
 
 from tfs.config import parse_rule_id, resolve
-from tfs.data.massive import NY
+from tfs.data.massive import NY, MassiveError
 from tfs.live.guard import Guard, Journal
 from tfs.risk import margin_requirement, size_short
 from tfs.rules import INTRADAY_ENTRIES, count_halts, find_entry, session, stop_price
@@ -28,8 +30,11 @@ LISTED = {"NASDAQ", "NYSE", "AMEX", "ARCA", "BATS", "NYSEARCA"}
 
 
 class Bot:
-    def __init__(self, cfg: dict, broker, journal: Journal, guard: Guard, now_fn=lambda: datetime.now(NY)):
-        self.cfg, self.b, self.j, self.g, self.now = cfg, broker, journal, guard, now_fn
+    def __init__(self, cfg: dict, broker, journal: Journal, guard: Guard, ref, now_fn=lambda: datetime.now(NY)):
+        """`ref` answers ticker_details(symbol, date): the Massive client live, a fake in tests.
+        Alpaca has no listing date or security type, so these come from the same Massive
+        ticker details the backtest's scan reads."""
+        self.cfg, self.b, self.j, self.g, self.ref, self.now = cfg, broker, journal, guard, ref, now_fn
         self.entry_rule, self.exit_rule, self.stop_rule = parse_rule_id(cfg["live"]["rule"])
         if self.entry_rule not in INTRADAY_ENTRIES or self.exit_rule not in ("eod", "time_stop_1100"):
             raise SystemExit(f"Live bot trades same-day rules only (entries {INTRADAY_ENTRIES}, exits eod or "
@@ -55,6 +60,23 @@ class Bot:
         now_min = pd.Timestamp(self.now()).floor("min")
         bars = self.b.bars(sym, pd.Timestamp(day) + pd.Timedelta(start + ":00"), now_min)
         return bars[bars.index + pd.Timedelta("1min") <= pd.Timestamp(self.now())]
+
+    def _reference_skip(self, sym: str, today: str) -> dict | None:
+        """The backtest's universe and IPO filters. Returns the journal details of a skip, or None."""
+        try:
+            det = self.ref.ticker_details(sym, today)
+            list_date = det.get("list_date")
+            days = (Date.fromisoformat(today) - Date.fromisoformat(list_date)).days if list_date else None
+        except (MassiveError, ValueError, OSError) as e:
+            # No data means neither check can run: skip rather than trade unchecked.
+            return {"reason": "reference_data_unavailable", "error": str(e)[:200]}
+        # The backtest universe is Massive tickers of these types; anything else never gets scanned there.
+        if det.get("type") not in self.cfg["data"]["stock_types"]:
+            return {"reason": "stock_type", "type": det.get("type")}
+        # Unknown listing date passes, as in the backtest (days_since_ipo None is not a recent IPO).
+        if days is not None and days < self.cfg["dnt"]["min_days_since_ipo"]:
+            return {"reason": "recent_ipo", "list_date": list_date, "days_since_ipo": days}
+        return None
 
     # -------------------------------------------------------------- scan
     def premarket_scan(self) -> dict[str, dict]:
@@ -84,6 +106,10 @@ class Bot:
                 continue
             if self.b.split_today(sym, today):
                 self.j.log("skip", sym, reason="split_today")
+                continue
+            skip = self._reference_skip(sym, today)
+            if skip:
+                self.j.log("skip", sym, **skip)
                 continue
             info["likely_htb"] = gap >= self.cfg["dnt"]["likely_htb_gap"]
             self.watch[sym] = info
@@ -178,6 +204,7 @@ def card_text(i: dict, cfg: dict) -> str:
 
 
 def _make(cfg, input_fn=input):
+    from tfs.data.massive import MassiveClient
     from tfs.live.alpaca import Alpaca
     live = cfg["live"]
     paper = live["mode"] != "live"
@@ -187,9 +214,15 @@ def _make(cfg, input_fn=input):
         if input_fn("  Type I AM THE ACCOUNT OWNER to continue: ").strip() != "I AM THE ACCOUNT OWNER":
             raise SystemExit("Not confirmed. Nothing was sent.")
     broker = Alpaca.from_env(paper=paper, feed=live["data_feed"])
+    ref = MassiveClient.from_config(cfg, resolve(cfg, cfg["data"]["cache_dir"]))
+    try:   # fail at startup, not one skipped gapper at a time at 09:25
+        ref.ticker_details("AAPL", datetime.now(NY).strftime("%Y-%m-%d"))
+    except MassiveError as e:
+        raise SystemExit(f"The bot needs Massive reference data (listing date, stock type). "
+                         f"Set {cfg['data'].get('api_key_env', 'MASSIVE_API_KEY')}; the free plan is enough.\n{e}")
     journal = Journal(resolve(cfg, live["journal"]))
     guard = Guard(cfg, resolve(cfg, live["kill_switch_file"]), input_fn)
-    return Bot(cfg, broker, journal, guard)
+    return Bot(cfg, broker, journal, guard, ref)
 
 
 def morning_cards(cfg):

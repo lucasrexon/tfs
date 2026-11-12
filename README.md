@@ -11,7 +11,7 @@ python -m tfs run         # real data: scan + backtest + report
 python -m tfs holdout     # open the sealed test period (once)
 python -m tfs card        # live: this morning's gapper cards
 python -m tfs bot         # live: the trading bot
-python -m pytest          # 21 tests, incl. a live-vs-backtest replay
+python -m pytest          # 31 tests, incl. a live-vs-backtest replay
 ```
 
 ## Part 1: research (5 years)
@@ -65,12 +65,16 @@ The bot trades **the account owner's own Alpaca account**, on their computer, un
 1. Open an Alpaca account (alpaca.markets). Margin and shorting need a margin account; Alpaca sets the minimum deposit.
 2. Create **paper** API keys first.
 3. For live data, get the SIP feed (Alpaca's paid "Algo Trader Plus" plan). The free IEX feed shows about 2.5% of volume, so the 500,000-share pre-market filter would miss almost everything. With IEX, set `min_premarket_volume` much lower and expect noise.
-4. Set your keys, then start the bot before 09:20 ET:
+4. The bot also needs a Massive key, for each gapper's listing date and security type (the same data the backtest uses). The free Massive plan is enough for this. Without it the bot will not start.
+5. Set your keys, then start the bot before 09:20 ET:
    ```bash
    export APCA_API_KEY_ID=...
    ```
    ```bash
    export APCA_API_SECRET_KEY=...
+   ```
+   ```bash
+   export MASSIVE_API_KEY=...
    ```
    ```bash
    python -m tfs bot
@@ -91,6 +95,9 @@ At 11:00 it applies the time stop, if the rule uses one. At 15:55 it closes ever
 - Stops after a 2% daily loss.
 - Max 3 trades a day and a 50% short-exposure cap.
 - Skips stocks with 2+ halts, and stocks with a split today.
+- Skips IPOs less than 180 days old (`dnt.min_days_since_ipo`), the same Do Not Touch rule as the backtest. A stock with no listing date on Massive is allowed, as in the backtest.
+- Only common stock and ADRs (`data.stock_types`), the same universe as the backtest: no ETFs, warrants, units, rights or preferreds.
+- If Massive can't be reached for a gapper, that gapper is skipped, not traded unchecked.
 - Kill switch: create a file named `STOP` in this folder and no new orders go out.
 - Live mode needs `live.mode: live` in config **and** the owner typing `I AM THE ACCOUNT OWNER` at startup.
 

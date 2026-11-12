@@ -118,7 +118,7 @@ class FakeClient:
     def ticker_details(self, ticker, date):
         r = _rng(self.seed, "det", ticker)
         list_date = (Date.fromisoformat(self.days[0]) - timedelta(days=int(r.integers(30, 3000)))).isoformat()
-        return {"ticker": ticker, "type": "CS", "name": f"Fake {ticker} Corp",
+        return {"ticker": ticker, "type": "WARRANT" if ticker.endswith("W") else "CS", "name": f"Fake {ticker} Corp",
                 "share_class_shares_outstanding": int(r.integers(2e6, 4e7)), "list_date": list_date}
 
     def splits(self, ticker):
