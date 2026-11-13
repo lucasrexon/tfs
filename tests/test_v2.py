@@ -112,3 +112,72 @@ def test_stats_tools():
     assert list(bh(pd.Series([0.001, 0.5, 0.9]))) == [True, False, False]
     m = Logit(1.0).fit(df[["flag", "noise"]], y)
     assert auc(y, m.predict(df[["flag", "noise"]])) > 0.6 and abs(m.weights()["flag"]) > abs(m.weights()["noise"])
+
+
+# ---------------------------------------------------------------- second batch: new entries and features
+def test_lower_high_waits_for_the_failed_bounce():
+    from tfs.v2.paths import lower_high
+    # up to 3.0, back to 2.6 (-13%), bounce to 2.8 (lower high), then rolls over
+    closes = np.r_[np.linspace(2.0, 3.0, 20), np.linspace(3.0, 2.6, 10), np.linspace(2.6, 2.8, 10), np.linspace(2.8, 2.2, 20)]
+    b = day_bars(closes)
+    i = lower_high(b.o.to_numpy(), b.h.to_numpy(), b.l.to_numpy(), b.c.to_numpy(), 5, len(b))
+    assert i is not None and 39 <= i <= 43                       # confirmed just after the bounce peak, not before
+    up = day_bars(np.linspace(2.0, 4.0, 60))                     # only new highs: never a lower high
+    assert lower_high(up.o.to_numpy(), up.h.to_numpy(), up.l.to_numpy(), up.c.to_numpy(), 5, len(up)) is None
+
+
+def test_new_entries_fill_after_their_signal():
+    closes = np.r_[np.linspace(2.0, 2.5, 20), np.linspace(2.5, 1.6, 200), np.full(170, 1.6)]
+    rows = simulate(gapper(), day_bars(closes), CFG)
+    by = {r["entry"]: r for r in rows if r["target"] == 0.20 and r["horizon"] == 0}
+    assert by["ext_+20%"]["entry_px"] == pytest.approx(2.4, abs=0.01)        # limit 20% above the 2.0 open
+    assert by["orb5_break"]["entry_px"] < 2.0 and by["orb5_break"]["entry_time"] > "09:50"   # under the first 5 minutes' low
+    assert by["t_1000"]["entry_time"] == "10:00"
+    assert "ext_+50%" not in by                                              # never got 50% above the open
+    assert not any(r["entry"] == "close_1555" and r["horizon"] == 0 for r in rows)
+
+
+def test_ladder_adds_higher_and_lowers_the_stress():
+    closes = np.r_[np.linspace(2.0, 3.2, 60), np.linspace(3.2, 1.9, 330)]    # +60%, then fades under the open
+    rows = simulate(gapper(), day_bars(closes), CFG)
+    one, lad = pick(rows, "open", 0.20, 0), pick(rows, "ladder_open", 0.20, 0)
+    assert not one["hit"] and lad["hit"]            # 1.9 is not 20% under 2.0, but it is 20% under the ladder's average
+    assert lad["entry_px"] == pytest.approx(3 / (1 / 2.0 + 1 / 2.5 + 1 / 3.0), abs=0.02)   # equal dollars at 2.0, 2.5, 3.0
+    assert lad["R"] < one["R"]                                               # same top, less stress than all-in at 2.0
+    assert lad["R"] == pytest.approx((3.2 / 2.0 + 3.2 / 2.5 + 3.2 / 3.0) / 3, abs=0.02)
+    quiet = simulate(gapper(), day_bars(np.linspace(2.0, 1.5, 390)), CFG)    # never trades higher: one third filled
+    q1, ql = pick(quiet, "open", 0.20, 0), pick(quiet, "ladder_open", 0.20, 0)
+    assert ql["ret"] == pytest.approx(q1["ret"] / 3, abs=1e-9) and ql["R"] == 1.0
+
+
+def test_short_data_is_point_in_time(tmp_path):
+    from tfs.v2.shorts import Shorts
+    pd.DataFrame({"ticker": ["T"] * 3, "date": ["2025-01-15", "2025-01-31", "2025-02-28"],
+                  "short_interest": [1e5, 2e5, 9e5], "avg_daily_volume": [1e5] * 3, "days_to_cover": [1.0, 2.0, 9.0]}
+                 ).to_parquet(tmp_path / "short_interest.parquet")
+    pd.DataFrame({"ticker": ["T"] * 2, "date": ["2025-02-28", "2025-03-03"], "total_volume": [1e6, 1e6],
+                  "short_volume": [4e5, 9e5]}).to_parquet(tmp_path / "short_volume.parquet")
+    pd.DataFrame({"ticker": ["T"] * 2, "date": ["2025-01-20", "2025-02-25"], "qty": [5e4, 8e5]}).to_parquet(tmp_path / "ftd.parquet")
+    f = Shorts(tmp_path).features("T", "2025-03-03", 1e6)
+    assert f["si_pct_so"] == pytest.approx(0.2) and f["days_to_cover"] == 2.0   # the Feb 28 report is not public yet
+    assert f["si_chg"] == pytest.approx(1.0)
+    assert f["sv_ratio_prev"] == pytest.approx(0.4)                             # the gap day's own short volume is not used
+    assert f["ftd_pct_so"] == pytest.approx(0.05) and f["ftd_days"] == 1        # the Feb 25 fail is not public yet
+
+
+def test_history_and_premarket_features_use_only_the_past():
+    from tfs.v2.extra import history_features, premarket_features
+    days = pd.bdate_range("2024-12-02", periods=70).strftime("%Y-%m-%d")
+    c = np.full(70, 1.0); c[30] = 1.2; h = c * 1.02; h[30] = 1.6                # one earlier 60% spike
+    hist = pd.DataFrame({"date": days, "o": c, "h": h, "l": c * 0.98, "c": c, "v": 1e5})
+    g = {"date": days[60], "pm_volume_real": 5e6, "factor": 1.0, "pm_gap": 1.0, "pm_last": 2.0, "pm_high": 2.2, "prev_close": 1.0}
+    f = history_features(hist, g)
+    assert f["hist_days"] == 60 and f["rvol_pm"] == pytest.approx(50) and f["prior_spikes_6m"] == 1
+    assert f["days_since_spike"] == 30 and f["last_spike_fade"] == pytest.approx(1.0 / 1.6 - 1)
+    hist.loc[60:, "h"] = 99.0                                                    # the future must not matter
+    assert history_features(hist, g) == f
+    pm = day_bars(np.r_[np.linspace(1.0, 2.2, 200), np.linspace(2.2, 2.0, 125)], start_min=240)   # 04:00 to 09:25
+    after = day_bars(np.full(30, 9.0), start_min=565)
+    p = premarket_features(pd.concat([pm, after]), g)
+    assert p == premarket_features(pm, g)                                        # bars after 09:25 are ignored
+    assert p["pmh_late"] == 0 and 120 <= p["mins_since_pmh"] <= 127 and p["pm_ret_30"] < 0 and p["pm_vwap_dist"] > 0

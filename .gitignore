@@ -3,13 +3,9 @@ output/
 output_demo/
 journal/
 reports/*.html
-download.log
-run.log
+*.log
 __pycache__/
 .pytest_cache/
 STOP
 tfs_head_start.zip
 dashboard/
-prep.log
-features.log
-research.log

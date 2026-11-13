@@ -31,10 +31,18 @@ BINARY = ["runway_lt6", "shelf_3y", "s1_12m", "offering_90d", "deficiency_12m", 
 NUMERIC = ["pm_gap", "pmh_ext", "pullback", "price", "pm_volume", "pm_dollar_vol", "shares_out", "float_rotation",
            "mcap_before", "runner_days", "days_since_ipo", "cash", "burn_per_month", "runway_months", "dilution_12m",
            "offerings_12m", "filings_30d", "dilution_pressure", "revenue_annual"]
+# second batch (tfs.v2.extra): price history, pre-market shape, market mood, short side, SEC forms
+BINARY += ["new_high_250", "pmh_late", "monday", "friday", "effect_30d", "late_filing_12m"]
+NUMERIC += ["rvol_pm", "dollar_adv20", "ret_5d", "ret_20d", "pm_vs_hi250", "overhead_vol", "drawdown_60", "gap_in_atr",
+            "prior_spikes_6m", "days_since_spike", "last_spike_fade", "prev_vol_ratio", "green_streak", "tug_20",
+            "pm_vwap_dist", "mins_since_pmh", "pm_ret_30", "pm_vol_last30", "gap_age_min", "pm_loc", "pm_bar_range",
+            "n_gap_today", "n_gap_prev5", "fade_prev5", "iwm_ret_5d", "si_pct_so", "days_to_cover", "si_chg",
+            "sv_ratio_prev", "sv_ratio_5d", "ftd_pct_so", "ftd_days", "prospectus_30d", "form4_90d", "holder_13_12m",
+            "days_since_offer_doc"]
 GAP_LEVELS = (0.40, 0.50, 0.75, 1.00)
 SQUEEZE_X = 2.0            # "extreme squeeze": price doubles from the 09:25 price within 5 days
 MARGIN_RULE = "full"       # 100% requirement at any price: what brokers do to a squeezing small cap
-SAFETY = 1.5               # size for a run-up 1.5x the worst one seen
+SAFETY = 3.0               # size for a run-up 3x the worst one seen (1.5x was broken out of sample)
 
 
 def build_trades(cfg, g: pd.DataFrame, cache: Path, od: Path) -> tuple[pd.DataFrame, pd.DataFrame]:
@@ -127,6 +135,8 @@ def main():
     print(f"Build-period gappers: {len(g):,} (lowest gap in file {g.pm_gap.min():.0%})")
     t, sq = build_trades(cfg, g, cache, od)
     feat = pd.read_parquet(od / "features.parquet")
+    if (od / "features2.parquet").exists():
+        feat = feat.merge(pd.read_parquet(od / "features2.parquet"), on=["date", "ticker"], how="left")
     feat = feat[feat["date"] <= be].merge(sq, on=["date", "ticker"], how="left")
     feat["recent_ipo"] = (feat["days_since_ipo"] < 180).astype(float).where(feat["days_since_ipo"].notna())
     feat["sqz"] = (feat["sq5"] >= SQUEEZE_X).astype(int)
@@ -173,6 +183,19 @@ def main():
         a = account_mc(x2, r.f_safe_h1, years / 2, n_sims=300)
         print(f"  {r.entry:>9} target {r.target:.0%} limit {int(r.horizon):>2}d  position {r.f_safe_h1:.1%}: ~{a['taken']} trades, "
               f"typical {a['acct_per_year']:+.1%}/yr, bad luck {a['acct_p5']:+.1%}/yr, liquidated in {a['p_liq']:.0%} of runs")
+    print("\n=== Every strategy type (gap >= 50%): best target and time limit chosen on the first half, then run on the second half with the first half's size ===")
+    fam = []
+    for entry, x in wf.groupby("entry"):
+        r = x.sort_values("acct_per_year_h1", ascending=False).iloc[0]
+        x2 = h2[(h2.pm_gap >= .5) & (h2.entry == entry) & (h2.target == r.target) & (h2.horizon == r.horizon)]
+        a = account_mc(x2, r.f_safe_h1, years / 2, n_sims=300)
+        fam.append({"entry": entry, "target": r.target, "limit_days": int(r.horizon), "n_h1": int(r.n_h1), "hit_h1": r.hit_rate_h1,
+                    "ev_h1": r.ev_h1, "Rmax_h1": r.R_max_h1, "position": r.f_safe_h1, "acct_h1": r.acct_per_year_h1,
+                    "n_h2": int(r.n_h2), "hit_h2": r.hit_rate_h2, "ev_h2": r.ev_h2, "t_h2": r.t_stat_h2, "Rmax_h2": r.R_max_h2,
+                    "acct_h2": a["acct_per_year"], "bad_luck_h2": a["acct_p5"], "liq_h2": a["p_liq"]})
+    fam = pd.DataFrame(fam).sort_values("acct_h2", ascending=False)
+    fam.to_csv(od / "families.csv", index=False)
+    print(fam.round(3).to_string(index=False))
     rank_corr = wf[["ev_h1", "ev_h2"]].corr(method="spearman").iloc[0, 1]
     print(f"Rank correlation of EV between halves across all methods: {rank_corr:.2f}")
     res["wf_rank_corr"] = float(rank_corr)
@@ -190,7 +213,7 @@ def main():
     print(f"\n=== Extreme squeezes: {fb.sqz.sum()} of {len(fb)} gappers ({fb.sqz.mean():.1%}) at least doubled from the 09:25 price within 5 days ===")
     cs = correlate(fb, feats, "sqz", binary)
     cs.to_csv(od / "corr_squeeze.csv", index=False)
-    print(cs.head(22).round(4).to_string(index=False))
+    print(cs.head(30).round(4).to_string(index=False))
     for c in ("catalyst", "industry"):
         if c in fb:
             lt = lift_table(fb, c, "sqz")
@@ -203,6 +226,8 @@ def main():
         if c in X:
             X[c] = np.log1p(X[c].clip(lower=0))
     a, b = fb["date"] < mid, fb["date"] >= mid
+    lo_q, hi_q = X[a].quantile(.01), X[a].quantile(.99)       # tame outliers using the first half only
+    X = X.clip(lower=lo_q, upper=hi_q, axis=1)
     model = Logit(l2=5.0).fit(X[a], fb.loc[a, "sqz"])
     fb["sq_risk"] = model.predict(X)
     a1, a2 = auc(fb.loc[a, "sqz"], fb.loc[a, "sq_risk"]), auc(fb.loc[b, "sqz"], fb.loc[b, "sq_risk"])
@@ -223,13 +248,14 @@ def main():
 
     # ---------- 5. success study for the 20% target
     pick = methods[(methods.gap_level == .5) & (methods.target == .20)].sort_values("acct_per_year", ascending=False).iloc[0]
-    sel = t[(t.entry == pick.entry) & (t.target == .20) & (t.horizon == pick.horizon) & (t.pm_gap >= .5)]
+    ref = methods[(methods.gap_level == .5) & (methods.target == .20) & (methods.entry == "pm_0925") & (methods.horizon == 1)].iloc[0]
+    sel = t[(t.entry == ref.entry) & (t.target == .20) & (t.horizon == ref.horizon) & (t.pm_gap >= .5)]
     fs = fb.merge(sel[["date", "ticker", "hit", "ret", "R"]], on=["date", "ticker"])
     fs["success"] = fs["hit"].astype(int)
-    print(f"\n=== What goes with hitting the 20% target (entry {pick.entry}, limit {int(pick.horizon)} days; {fs.success.mean():.0%} hit) ===")
+    print(f"\n=== What goes with hitting the 20% target (entry {ref.entry}, limit {int(ref.horizon)} days; {fs.success.mean():.0%} hit) ===")
     cx = correlate(fs, feats, "success", binary)
     cx.to_csv(od / "corr_success.csv", index=False)
-    print(cx.head(15).round(4).to_string(index=False))
+    print(cx.head(30).round(4).to_string(index=False))
     for c in ("catalyst", "industry"):
         if c in fs:
             lt = lift_table(fs, c, "success"); lt.to_csv(od / f"lift_success_{c}.csv", index=False)
@@ -238,7 +264,7 @@ def main():
     # ---------- 6. account simulation: the best 20%-target method, and the top method overall
     top = methods[methods.gap_level >= .5].sort_values("acct_per_year", ascending=False).iloc[0]
     res["top"] = {k: (float(v) if isinstance(v, (int, float, np.floating, np.integer)) else v) for k, v in top.to_dict().items()}
-    for name, m in (("best with your 20% target", pick), ("top method overall", top)):
+    for name, m in (("your 20% target at 09:25, next-day limit", ref), ("best with your 20% target", pick), ("top method overall", top)):
         x = t[(t.entry == m.entry) & (t.target == m.target) & (t.horizon == m.horizon) & (t.pm_gap >= m.gap_level)]
         print(f"\n=== $10,000 account, {name}: gap >= {m.gap_level:.0%}, entry {m.entry}, target {m.target:.0%}, limit {int(m.horizon)} days ===")
         for label, f in (("safe size", m.f_safe), ("2x safe size", min(1, m.f_safe * 2)), ("5x safe size", min(1, m.f_safe * 5))):
