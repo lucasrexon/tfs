@@ -77,3 +77,14 @@ live:
   journal: journal/live_journal.csv      # append-only log of every decision
   kill_switch_file: STOP                 # create a file named STOP to block all new orders
   allow_overnight: false                 # live bot flattens everything at eod_exit
+
+# ---------------------------------------------------------------- v2 (no-stop research), decided 2026-11-13
+# Chosen after the build-year research. The sealed test year has NOT been run with these yet.
+v2:
+  position_pct: 0.024              # each short is 2.4% of the account (survives a 21x run-up at 100% margin)
+  disaster_stop_x: 3.0             # far-away stop at 3x the entry price; a gap or halt can fill above it
+  methods:                         # the two methods to test once on the sealed year
+    - {name: pm_0925_20, min_gap: 0.50, entry: pm_0925, target: 0.20, limit_days: 1}
+    - {name: close_1555_10, min_gap: 0.50, entry: close_1555, target: 0.10, limit_days: 1}
+  filter_check: skip_pmh_after_0900   # also report each method without gappers whose pre-market high came after 09:00
+  sealed_test_run: false
