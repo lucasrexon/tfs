@@ -1,0 +1,683 @@
+<meta name="dash-one-writer">
+<style>
+  .tfs { --tfs-pos: var(--color-ok); --tfs-neg: var(--color-bad); display: grid; gap: var(--cds-gap-xl); font-variant-numeric: tabular-nums; }
+  .tfs section { display: grid; gap: var(--cds-gap-md); min-width: 0; }
+  .tfs-eyebrow { margin: 0; font-size: var(--cds-font-size-caption); letter-spacing: .06em; text-transform: uppercase; color: var(--color-fg-muted); }
+  .tfs-title { margin: 0; font-family: var(--font-anthropic-serif); font-weight: 400; font-size: var(--cds-font-size-title); line-height: 1.15; text-wrap: balance; }
+  .tfs-lede { margin: 0; max-width: 68ch; font-size: var(--cds-font-size-body); line-height: 1.55; }
+  .tfs-muted { color: var(--color-fg-muted); }
+  .tfs-small { font-size: var(--cds-font-size-caption); }
+  .tfs h2 { margin: 0; font-size: var(--cds-font-size-heading); font-weight: var(--cds-font-weight-medium); text-wrap: balance; }
+  .tfs h3 { margin: 0; font-size: var(--cds-font-size-body); font-weight: var(--cds-font-weight-medium); }
+  .tfs p { margin: 0; max-width: 70ch; line-height: 1.5; }
+  .tfs-panel { background: var(--color-panel); border: 1px solid var(--color-border-line); border-radius: var(--cds-radius); padding: var(--cds-pad-lg); display: grid; gap: var(--cds-gap-md); min-width: 0; }
+
+  /* controls */
+  .tfs-controls { display: flex; flex-wrap: wrap; gap: var(--cds-gap-md) var(--cds-gap-lg); align-items: end; }
+  .tfs-field { display: grid; gap: var(--cds-gap-xs); min-width: 0; flex: 1 1 200px; }
+  .tfs-field label, .tfs-field .tfs-lab { font-size: var(--cds-font-size-caption); color: var(--color-fg-muted); }
+  .tfs-field select { width: 100%; }
+  .tfs-seg { display: inline-flex; border: 1px solid var(--color-border-line); border-radius: var(--cds-radius); overflow: hidden; }
+  .tfs-seg button { font: inherit; font-size: var(--cds-font-size-caption); padding: var(--cds-pad-xs) var(--cds-pad-md); border: 0; background: var(--color-bg); color: var(--color-fg); cursor: pointer; }
+  .tfs-seg button + button { border-left: 1px solid var(--color-border-line); }
+  .tfs-seg button[aria-pressed="true"] { background: var(--color-fg); color: var(--color-bg); }
+  .tfs-seg button:focus-visible, .tfs-cell:focus-visible { outline: 2px solid var(--color-fg); outline-offset: 2px; }
+  .tfs-note { padding: var(--cds-pad-sm) var(--cds-pad-md); border-radius: var(--cds-radius); border: 1px solid var(--color-border-line); font-size: var(--cds-font-size-caption); }
+
+  /* matrix */
+  .tfs-scroll { overflow-x: auto; min-width: 0; }
+  .tfs-matrix { border-collapse: separate; border-spacing: 4px; width: 100%; min-width: 560px; }
+  .tfs-matrix th { font-size: var(--cds-font-size-caption); font-weight: var(--cds-font-weight-medium); color: var(--color-fg-muted); text-align: left; padding: 2px 4px; vertical-align: bottom; }
+  .tfs-matrix tbody th { vertical-align: middle; max-width: 9rem; }
+  .tfs-cell { width: 100%; min-height: 3.4rem; display: grid; gap: 2px; place-content: center; text-align: center; border: 1px solid var(--color-border-line); border-radius: var(--cds-radius); background: var(--color-bg); color: var(--color-fg); font: inherit; cursor: pointer; padding: var(--cds-pad-xs); }
+  .tfs-cell.is-sel { outline: 2px solid var(--color-fg); outline-offset: 1px; }
+  .tfs-cv { font-size: var(--cds-font-size-body); font-weight: var(--cds-font-weight-medium); }
+  .tfs-ct { font-size: var(--cds-font-size-caption); color: var(--color-fg-muted); }
+  .tfs-na { min-height: 3.4rem; display: grid; place-content: center; text-align: center; font-size: var(--cds-font-size-caption); color: var(--color-fg-muted); border: 1px dashed var(--color-border-line); border-radius: var(--cds-radius); padding: var(--cds-pad-xs); }
+  .tfs-legend { display: flex; flex-wrap: wrap; gap: var(--cds-gap-md); align-items: center; font-size: var(--cds-font-size-caption); color: var(--color-fg-muted); }
+  .tfs-sw { display: inline-block; width: .9rem; height: .9rem; border-radius: 3px; vertical-align: -2px; margin-right: 4px; border: 1px solid var(--color-border-line); }
+
+  /* tiles */
+  .tfs-tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: var(--cds-gap-md); }
+  .tfs-tile { background: var(--color-panel); border: 1px solid var(--color-border-line); border-radius: var(--cds-radius); padding: var(--cds-pad-md); display: grid; gap: var(--cds-gap-xs); align-content: start; min-width: 0; }
+  .tfs-tile .k { font-size: var(--cds-font-size-caption); color: var(--color-fg-muted); }
+  .tfs-tile .v { font-family: var(--font-anthropic-serif); font-weight: 400; font-size: var(--cds-font-size-title); line-height: 1.1; }
+  .tfs-pos { color: var(--tfs-pos); }
+  .tfs-neg { color: var(--tfs-neg); }
+  .tfs-pill { justify-self: start; font-size: var(--cds-font-size-caption); padding: 1px 8px; border-radius: 999px; border: 1px solid currentColor; }
+  .tfs-pill.ok { color: var(--color-ok); } .tfs-pill.warn { color: var(--color-warn); } .tfs-pill.bad { color: var(--color-bad); }
+
+  /* charts */
+  .tfs-grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: var(--cds-gap-lg); }
+  .tfs-chart { position: relative; min-height: 230px; min-width: 0; }
+  .tfs-chart svg { display: block; width: 100%; height: auto; overflow: visible; }
+  .tfs-chart .tick text { fill: var(--cds-text-secondary); font-size: var(--cds-font-size-caption); }
+  .tfs-chart .tick line, .tfs-chart .domain { stroke: var(--cds-chart-grid); }
+  .tfs-chart .tfs-ax text { fill: var(--cds-text-secondary); font-size: var(--cds-font-size-caption); }
+  .tfs-tip { position: absolute; pointer-events: none; background: var(--cds-surface-popover); border: 1px solid var(--cds-border); box-shadow: var(--cds-shadow-popover); border-radius: var(--cds-radius); padding: 6px 9px; font-size: var(--cds-font-size-caption); white-space: nowrap; z-index: 2; }
+  .tfs-fail { min-height: 230px; display: grid; place-content: center; color: var(--color-fg-muted); font-size: var(--cds-font-size-caption); }
+
+  /* table */
+  .tfs-table { border-collapse: collapse; width: 100%; font-size: var(--cds-font-size-caption); }
+  .tfs-table th, .tfs-table td { text-align: right; padding: 6px 10px; border-bottom: 1px solid var(--color-border-line); white-space: nowrap; }
+  .tfs-table th:first-child, .tfs-table td:first-child, .tfs-table th:nth-child(2), .tfs-table td:nth-child(2) { text-align: left; }
+  .tfs-table th { color: var(--color-fg-muted); font-weight: var(--cds-font-weight-medium); }
+
+  .tfs details { border-top: 1px solid var(--color-border-line); padding-top: var(--cds-pad-md); }
+  .tfs summary { cursor: pointer; font-weight: var(--cds-font-weight-medium); }
+  .tfs details ul { margin: var(--cds-gap-sm) 0 0; padding-left: 1.2rem; display: grid; gap: var(--cds-gap-xs); max-width: 72ch; line-height: 1.5; }
+  [data-dash-source-state=refreshing] { opacity: .5; }
+</style>
+
+<div class="tfs">
+  <header id="top" class="tfs-head" style="display:grid;gap:var(--cds-gap-sm)">
+    <p class="tfs-eyebrow">TFS research bot · Plan T backtest · build year</p>
+    <h1 class="tfs-title">Does shorting +50% pre-market gappers pay?</h1>
+    <p class="tfs-lede">The strongest rule the trading bot is allowed to use (same day, with a stop) was <b data-draw="bestSameRule" data-source="best" data-field="rule" data-where="kind=same_day">—</b>, at <b data-draw="bestSameExp" data-source="best" data-field="expectancy" data-where="kind=same_day">—</b> per trade after costs (t-stat <b data-draw="bestSameT" data-source="best" data-field="t_stat" data-where="kind=same_day">—</b>). The strongest of all 44 rules was <b data-draw="bestAllRule" data-source="best" data-field="rule" data-where="kind=all">—</b> at <b data-draw="bestAllExp" data-source="best" data-field="expectancy" data-where="kind=all">—</b> (t-stat <b data-draw="bestAllT" data-source="best" data-field="t_stat" data-where="kind=all">—</b>)<span class="tfs-overnight" hidden>, which holds shorts overnight</span>.</p>
+    <p class="tfs-small tfs-muted"><span data-draw="nBuild" data-source="summary" data-field="build_gappers" data-row="0">—</span> gappers from <span data-draw="bStart" data-source="summary" data-field="build_start" data-row="0">—</span> to <span data-draw="bEnd" data-source="summary" data-field="build_end" data-row="0">—</span>. Another <span data-draw="nTest" data-source="summary" data-field="test_gappers" data-row="0">—</span> from the year after stay sealed for one final test. All returns are after slippage, commission, locate and borrow fees.</p>
+  </header>
+
+  <section id="controls" class="tfs-panel" aria-label="Choose a rule">
+    <div class="tfs-controls">
+      <div class="tfs-field">
+        <label for="tfs-entry">Get in</label>
+        <select class="dash-select" id="tfs-entry">
+          <option value="open">At the 9:30 open</option>
+          <option value="first_red_5m">After the first red 5-minute candle</option>
+          <option value="vwap_loss">When price closes below VWAP</option>
+          <option value="pmh_fail">After a failed retest of the pre-market high</option>
+          <option value="next_open">At the next morning's open</option>
+        </select>
+      </div>
+      <div class="tfs-field">
+        <label for="tfs-exit">Get out</label>
+        <select class="dash-select" id="tfs-exit">
+          <option value="eod">3:55 pm the same day</option>
+          <option value="time_stop_1100">11:00 if losing, else 3:55 pm</option>
+          <option value="next_open">Next morning's open</option>
+          <option value="close_d2">Close of day 2</option>
+          <option value="close_d3">Close of day 3</option>
+        </select>
+      </div>
+      <div class="tfs-field" style="flex:0 1 auto">
+        <span class="tfs-lab" id="tfs-stop-lab">Stop</span>
+        <div class="tfs-seg" role="group" aria-labelledby="tfs-stop-lab">
+          <button type="button" class="tfs-stop" data-stop="none" aria-pressed="false">No stop</button>
+          <button type="button" class="tfs-stop" data-stop="pmh_plus_5" aria-pressed="true">Pre-market high +5%</button>
+        </div>
+      </div>
+      <div class="tfs-field" style="flex:0 1 auto">
+        <span class="tfs-lab" id="tfs-uni-lab">Gappers</span>
+        <div class="tfs-seg" role="group" aria-labelledby="tfs-uni-lab">
+          <button type="button" class="tfs-uni" data-universe="all" aria-pressed="true">All</button>
+          <button type="button" class="tfs-uni" data-universe="borrowable" aria-pressed="false">Borrowable only</button>
+        </div>
+      </div>
+    </div>
+    <p class="tfs-small tfs-muted">"Borrowable only" drops gappers up 200%+ or whose whole share count traded before the open more than 3 times. Those are usually impossible to borrow, so a rule that only works on them doesn't work.</p>
+    <p class="tfs-note tfs-untested" hidden>This combination isn't tested: a next-morning entry can only exit on day 2 or day 3. Pick another exit.</p>
+  </section>
+
+  <section id="matrix">
+    <h2>All rules at a glance</h2>
+    <p class="tfs-muted">Average return per trade after costs, for the stop and gappers chosen above. The small number is the t-stat: under about 2, the result could easily be luck. Click a box to look at that rule.</p>
+    <div class="tfs-scroll">
+      <table class="tfs-matrix">
+        <thead><tr><th scope="col">Get in ↓ / Get out →</th><th scope="col">3:55 pm same day</th><th scope="col">11:00 if losing</th><th scope="col">Next open</th><th scope="col">Day 2 close</th><th scope="col">Day 3 close</th></tr></thead>
+        <tbody>
+          <tr><th scope="row">9:30 open</th>
+            <td><button type="button" class="tfs-cell" data-entry="open" data-exit="eod" aria-label="Open, cover 3:55 pm"><span class="tfs-cv" data-draw="cell" data-source="rules" data-field="expectancy">—</span><span class="tfs-ct" data-draw="cellt" data-source="rules" data-field="t_stat">—</span></button></td>
+            <td><button type="button" class="tfs-cell" data-entry="open" data-exit="time_stop_1100" aria-label="Open, 11:00 time stop"><span class="tfs-cv" data-draw="cell" data-source="rules" data-field="expectancy">—</span><span class="tfs-ct" data-draw="cellt" data-source="rules" data-field="t_stat">—</span></button></td>
+            <td><button type="button" class="tfs-cell" data-entry="open" data-exit="next_open" aria-label="Open, cover next open"><span class="tfs-cv" data-draw="cell" data-source="rules" data-field="expectancy">—</span><span class="tfs-ct" data-draw="cellt" data-source="rules" data-field="t_stat">—</span></button></td>
+            <td><button type="button" class="tfs-cell" data-entry="open" data-exit="close_d2" aria-label="Open, cover day 2 close"><span class="tfs-cv" data-draw="cell" data-source="rules" data-field="expectancy">—</span><span class="tfs-ct" data-draw="cellt" data-source="rules" data-field="t_stat">—</span></button></td>
+            <td><button type="button" class="tfs-cell" data-entry="open" data-exit="close_d3" aria-label="Open, cover day 3 close"><span class="tfs-cv" data-draw="cell" data-source="rules" data-field="expectancy">—</span><span class="tfs-ct" data-draw="cellt" data-source="rules" data-field="t_stat">—</span></button></td>
+          </tr>
+          <tr><th scope="row">First red 5-min</th>
+            <td><button type="button" class="tfs-cell" data-entry="first_red_5m" data-exit="eod" aria-label="First red candle, cover 3:55 pm"><span class="tfs-cv" data-draw="cell" data-source="rules" data-field="expectancy">—</span><span class="tfs-ct" data-draw="cellt" data-source="rules" data-field="t_stat">—</span></button></td>
+            <td><button type="button" class="tfs-cell" data-entry="first_red_5m" data-exit="time_stop_1100" aria-label="First red candle, 11:00 time stop"><span class="tfs-cv" data-draw="cell" data-source="rules" data-field="expectancy">—</span><span class="tfs-ct" data-draw="cellt" data-source="rules" data-field="t_stat">—</span></button></td>
+            <td><button type="button" class="tfs-cell" data-entry="first_red_5m" data-exit="next_open" aria-label="First red candle, cover next open"><span class="tfs-cv" data-draw="cell" data-source="rules" data-field="expectancy">—</span><span class="tfs-ct" data-draw="cellt" data-source="rules" data-field="t_stat">—</span></button></td>
+            <td><button type="button" class="tfs-cell" data-entry="first_red_5m" data-exit="close_d2" aria-label="First red candle, cover day 2 close"><span class="tfs-cv" data-draw="cell" data-source="rules" data-field="expectancy">—</span><span class="tfs-ct" data-draw="cellt" data-source="rules" data-field="t_stat">—</span></button></td>
+            <td><button type="button" class="tfs-cell" data-entry="first_red_5m" data-exit="close_d3" aria-label="First red candle, cover day 3 close"><span class="tfs-cv" data-draw="cell" data-source="rules" data-field="expectancy">—</span><span class="tfs-ct" data-draw="cellt" data-source="rules" data-field="t_stat">—</span></button></td>
+          </tr>
+          <tr><th scope="row">Close below VWAP</th>
+            <td><button type="button" class="tfs-cell" data-entry="vwap_loss" data-exit="eod" aria-label="VWAP loss, cover 3:55 pm"><span class="tfs-cv" data-draw="cell" data-source="rules" data-field="expectancy">—</span><span class="tfs-ct" data-draw="cellt" data-source="rules" data-field="t_stat">—</span></button></td>
+            <td><button type="button" class="tfs-cell" data-entry="vwap_loss" data-exit="time_stop_1100" aria-label="VWAP loss, 11:00 time stop"><span class="tfs-cv" data-draw="cell" data-source="rules" data-field="expectancy">—</span><span class="tfs-ct" data-draw="cellt" data-source="rules" data-field="t_stat">—</span></button></td>
+            <td><button type="button" class="tfs-cell" data-entry="vwap_loss" data-exit="next_open" aria-label="VWAP loss, cover next open"><span class="tfs-cv" data-draw="cell" data-source="rules" data-field="expectancy">—</span><span class="tfs-ct" data-draw="cellt" data-source="rules" data-field="t_stat">—</span></button></td>
+            <td><button type="button" class="tfs-cell" data-entry="vwap_loss" data-exit="close_d2" aria-label="VWAP loss, cover day 2 close"><span class="tfs-cv" data-draw="cell" data-source="rules" data-field="expectancy">—</span><span class="tfs-ct" data-draw="cellt" data-source="rules" data-field="t_stat">—</span></button></td>
+            <td><button type="button" class="tfs-cell" data-entry="vwap_loss" data-exit="close_d3" aria-label="VWAP loss, cover day 3 close"><span class="tfs-cv" data-draw="cell" data-source="rules" data-field="expectancy">—</span><span class="tfs-ct" data-draw="cellt" data-source="rules" data-field="t_stat">—</span></button></td>
+          </tr>
+          <tr><th scope="row">Failed pre-market-high retest</th>
+            <td><button type="button" class="tfs-cell" data-entry="pmh_fail" data-exit="eod" aria-label="Failed retest, cover 3:55 pm"><span class="tfs-cv" data-draw="cell" data-source="rules" data-field="expectancy">—</span><span class="tfs-ct" data-draw="cellt" data-source="rules" data-field="t_stat">—</span></button></td>
+            <td><button type="button" class="tfs-cell" data-entry="pmh_fail" data-exit="time_stop_1100" aria-label="Failed retest, 11:00 time stop"><span class="tfs-cv" data-draw="cell" data-source="rules" data-field="expectancy">—</span><span class="tfs-ct" data-draw="cellt" data-source="rules" data-field="t_stat">—</span></button></td>
+            <td><button type="button" class="tfs-cell" data-entry="pmh_fail" data-exit="next_open" aria-label="Failed retest, cover next open"><span class="tfs-cv" data-draw="cell" data-source="rules" data-field="expectancy">—</span><span class="tfs-ct" data-draw="cellt" data-source="rules" data-field="t_stat">—</span></button></td>
+            <td><button type="button" class="tfs-cell" data-entry="pmh_fail" data-exit="close_d2" aria-label="Failed retest, cover day 2 close"><span class="tfs-cv" data-draw="cell" data-source="rules" data-field="expectancy">—</span><span class="tfs-ct" data-draw="cellt" data-source="rules" data-field="t_stat">—</span></button></td>
+            <td><button type="button" class="tfs-cell" data-entry="pmh_fail" data-exit="close_d3" aria-label="Failed retest, cover day 3 close"><span class="tfs-cv" data-draw="cell" data-source="rules" data-field="expectancy">—</span><span class="tfs-ct" data-draw="cellt" data-source="rules" data-field="t_stat">—</span></button></td>
+          </tr>
+          <tr><th scope="row">Next morning's open</th>
+            <td><div class="tfs-na">Not tested</div></td>
+            <td><div class="tfs-na">Not tested</div></td>
+            <td><div class="tfs-na">Not tested</div></td>
+            <td><button type="button" class="tfs-cell" data-entry="next_open" data-exit="close_d2" aria-label="Next open, cover day 2 close"><span class="tfs-cv" data-draw="cell" data-source="rules" data-field="expectancy">—</span><span class="tfs-ct" data-draw="cellt" data-source="rules" data-field="t_stat">—</span></button></td>
+            <td><button type="button" class="tfs-cell" data-entry="next_open" data-exit="close_d3" aria-label="Next open, cover day 3 close"><span class="tfs-cv" data-draw="cell" data-source="rules" data-field="expectancy">—</span><span class="tfs-ct" data-draw="cellt" data-source="rules" data-field="t_stat">—</span></button></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="tfs-legend" aria-hidden="true">
+      <span><i class="tfs-sw" style="background:color-mix(in srgb, var(--color-bad) 55%, var(--color-bg))"></i>Loses money</span>
+      <span><i class="tfs-sw" style="background:var(--color-bg)"></i>About zero</span>
+      <span><i class="tfs-sw" style="background:color-mix(in srgb, var(--color-ok) 55%, var(--color-bg))"></i>Makes money</span>
+      <span>Same-day rules (first two columns) are the only ones the live bot may trade.</span>
+    </div>
+  </section>
+
+  <section id="selected">
+    <h2>The rule you picked</h2>
+    <p class="tfs-muted"><span data-draw="selName">—</span></p>
+    <div class="tfs-tiles">
+      <div class="tfs-tile"><span class="k">Average per trade, after costs</span><span class="v" data-draw="tExp" data-source="rules" data-field="expectancy">—</span><span class="tfs-pill bad" data-verdict="lose" hidden>Loses money</span><span class="tfs-pill warn" data-verdict="luck" hidden>Could easily be luck</span><span class="tfs-pill warn" data-verdict="promising" hidden>Promising, not proven</span><span class="tfs-pill ok" data-verdict="strong" hidden>Strong in the build year</span></div>
+      <div class="tfs-tile"><span class="k">Before costs</span><span class="v" data-draw="tGross" data-source="rules" data-field="gross_expectancy">—</span></div>
+      <div class="tfs-tile"><span class="k">t-stat (2+ needed to rule out luck)</span><span class="v" data-draw="tT" data-source="rules" data-field="t_stat">—</span></div>
+      <div class="tfs-tile"><span class="k">Trades</span><span class="v" data-draw="tN" data-source="rules" data-field="trades">—</span></div>
+      <div class="tfs-tile"><span class="k">Win rate</span><span class="v" data-draw="tWin" data-source="rules" data-field="win_rate">—</span></div>
+      <div class="tfs-tile"><span class="k">Average win / average loss</span><span class="v"><span data-draw="tAw" data-source="rules" data-field="avg_win">—</span> / <span data-draw="tAl" data-source="rules" data-field="avg_loss">—</span></span></div>
+      <div class="tfs-tile"><span class="k">Worst single trade</span><span class="v" data-draw="tWorst" data-source="rules" data-field="worst">—</span></div>
+      <div class="tfs-tile"><span class="k">How far the worst 5% ran against you</span><span class="v" data-draw="tMae" data-source="rules" data-field="mae_p95">—</span></div>
+    </div>
+
+    <div class="tfs-grid2">
+      <div class="tfs-panel" id="hist-panel">
+        <h3>How the trades came out</h3>
+        <p class="tfs-small tfs-muted">Number of trades in each 10-point band of return. The end bands collect everything beyond ±90%.</p>
+        <div class="tfs-chart" data-draw="hist" data-source="hist"></div>
+      </div>
+      <div class="tfs-panel" id="equity-panel">
+        <h3>A $10,000 practice account trading only this rule</h3>
+        <p class="tfs-small tfs-muted">Started at <span data-draw="startEq" data-source="summary" data-field="start_equity" data-row="0">—</span>, risking <span data-draw="riskPct" data-source="summary" data-field="risk_per_trade" data-row="0">—</span> of the account per trade, with at most <span data-draw="maxTr" data-source="summary" data-field="max_trades_per_day" data-row="0">—</span> trades a day. It ended at <b data-draw="acctEnd" data-source="rules" data-field="acct_end">—</b>, and the worst drop from a high was <b data-draw="acctDd" data-source="rules" data-field="acct_max_dd">—</b>.</p>
+        <p class="tfs-note tfs-gapnote" hidden>The average trade made money, but the account still lost. Each position was sized so hitting the stop costs 0.5% of the account. When a stock jumps past the stop, especially overnight, the loss is many times that, and those few trades outweigh the many small wins.</p>
+        <p class="tfs-note tfs-owes" hidden>Below $0 means the account owes the broker money. Without a stop, sizing at 10% of the account let one squeeze wipe it out and more.</p>
+        <div class="tfs-chart" data-draw="equity" data-source="curves"></div>
+      </div>
+      <div class="tfs-panel" id="bucket-panel">
+        <h3>By gap size</h3>
+        <p class="tfs-small tfs-muted">Average return per trade, split by how far the stock was up at 9:25.</p>
+        <div class="tfs-chart" data-draw="buckets" data-source="buckets"></div>
+      </div>
+      <div class="tfs-panel" id="month-panel">
+        <h3>Month by month</h3>
+        <p class="tfs-small tfs-muted">Average return per trade in each month. A real edge should show up in most months, not just one or two.</p>
+        <div class="tfs-chart" data-draw="months" data-source="months"></div>
+      </div>
+    </div>
+
+    <div class="tfs-panel" id="worst-panel">
+      <h3>The 10 worst trades</h3>
+      <p class="tfs-small tfs-muted">These are the squeezes that decide whether a short strategy survives.</p>
+      <div class="tfs-scroll">
+        <table class="tfs-table" data-source="worst" data-row-key="date,ticker">
+          <thead><tr><th data-field="date">Date</th><th data-field="ticker">Stock</th><th data-field="gap_bucket">Gap at 9:25</th><th data-field="ret">Return</th><th data-field="mae">Worst run against you</th></tr></thead>
+          <tbody data-draw="worstRows"></tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <section id="gappers">
+    <h2>What the gappers themselves did</h2>
+    <p><b data-draw="gBelow" data-source="gstats" data-field="closed_below_open" data-row="0">—</b> closed below their 9:30 open, and the typical one moved <b data-draw="gMed" data-source="gstats" data-field="median_day_ret" data-row="0">—</b> from open to close. So the fade is real. But <b data-draw="gHtb" data-source="gstats" data-field="likely_htb" data-row="0">—</b> looked hard to borrow, and the biggest winners for a short are the hardest to short.</p>
+    <div class="tfs-grid2">
+      <div class="tfs-panel" id="hod-panel">
+        <h3>When the day's high printed</h3>
+        <p class="tfs-small tfs-muted">Share of gappers by the hour their regular-session high came.</p>
+        <div class="tfs-chart" data-draw="hod" data-source="hod"></div>
+      </div>
+      <div class="tfs-panel" id="day-panel">
+        <h3>Open to close move</h3>
+        <p class="tfs-small tfs-muted">Number of gappers by their move from the 9:30 open to the close. Left of zero is good for a short.</p>
+        <div class="tfs-chart" data-draw="dayhist" data-source="dayhist"></div>
+      </div>
+    </div>
+  </section>
+
+  <details id="notes">
+    <summary>How this was tested, and what it can't see</summary>
+    <ul>
+      <li>Every US-listed common stock (listed and delisted, no OTC) up 50%+ at 9:25 am, priced $1 or more, with 500,000+ shares traded before the open. Prices are split-adjusted so a reverse split never looks like a gap.</li>
+      <li>Trades fill at the next 1-minute bar's open after a signal, never at the signal price. Stops fill at the bar's open if price jumped past them, plus 3% extra. An overnight gap through a stop fills at the next open.</li>
+      <li>Costs: 0.5% slippage each way (minimum 1 cent), $0.005 a share commission each way, a $0.03 locate fee per share, and a 100% yearly borrow fee per night held. A short-sale restriction day adds 1% to the entry slippage.</li>
+      <li>Skipped: entries after 2 or more trading halts that day, and stocks listed less than 180 days.</li>
+      <li>Borrow availability on each day isn't in free data, which is why "Borrowable only" exists. Shares outstanding stands in for the float, so the real float rotation is higher.</li>
+      <li>This page shows the build year only. Rules were compared here; the next year stays sealed until 1 or 2 chosen rules are tested on it once.</li>
+      <li>Educational research, not financial advice. Short selling can lose more than the money in the account.</li>
+    </ul>
+  </details>
+</div>
+
+<script>
+  window.TFS = (() => {
+    const P = () => {
+      const p = dash.params();
+      return { entry: p.entry || 'open', exit: p.exit || 'close_d3', stop: p.stop || 'pmh_plus_5', universe: p.universe || 'all' };
+    };
+    const rule = (s) => `${s.entry}|${s.exit}|${s.stop}`;
+    const valid = (e, x) => !(e === 'next_open' && ['eod', 'time_stop_1100', 'next_open'].includes(x));
+    const pct = d3.format('+.1%');
+    const pct0 = d3.format('.0%');
+    const money = (v) => (v < 0 ? '−$' : '$') + d3.format(',.0f')(Math.abs(v));
+    const signClass = (el, v) => { el.classList.toggle('tfs-pos', v > 0); el.classList.toggle('tfs-neg', v < 0); };
+    const label = (code, sel) => {
+      const o = document.querySelector(`${sel} option[value="${code}"]`);
+      return o ? o.textContent : code;
+    };
+    const ruleText = (rid) => {
+      const [e, x, s] = String(rid).split('|');
+      const stop = s === 'none' ? 'no stop' : 'stop at pre-market high +5%';
+      return `get in ${label(e, '#tfs-entry').toLowerCase()}, get out ${label(x, '#tfs-exit').toLowerCase()}, ${stop}`;
+    };
+    const where = (rid, u) => `rule=${encodeURIComponent(rid)}&universe=${u}`;
+    const findRule = (rid, u) => {
+      const r = dash.data('rules');
+      return r.status === 'ok' ? r.data.find((d) => d.rule === rid && d.universe === u) : undefined;
+    };
+    return { P, rule, valid, pct, pct0, money, signClass, ruleText, where, findRule };
+  })();
+
+  // ---------- calculations (readers can open each one in Sources)
+  dash.calc('best', {
+    inputs: ['rules'],
+    title: 'Strongest rules for the gappers chosen',
+    description: 'The rule with the highest t-stat (the result least likely to be luck) among rules the live bot may trade (same day, with a stop), and among all rules, for all gappers or borrowable ones as chosen. Rules with fewer than 30 trades are left out.',
+    fn: (rules) => {
+      const u = dash.params().universe || 'all';
+      const r = rules.filter((d) => d.universe === u && d.trades >= 30);
+      const top = (arr) => arr.filter((d) => d.t_stat !== null).sort((a, b) => b.t_stat - a.t_stat)[0];
+      const out = [];
+      const s = top(r.filter((d) => d.same_day === true && d.stop !== 'none'));
+      const a = top(r);
+      if (s) out.push({ kind: 'same_day', rule: s.rule, expectancy: s.expectancy, t_stat: s.t_stat, trades: s.trades });
+      if (a) out.push({ kind: 'all', rule: a.rule, expectancy: a.expectancy, t_stat: a.t_stat, trades: a.trades });
+      return out;
+    },
+  });
+
+  const pickTrades = (trades) => {
+    const p = dash.params();
+    const rid = `${p.entry || 'open'}|${p.exit || 'close_d3'}|${p.stop || 'pmh_plus_5'}`;
+    const u = p.universe || 'all';
+    return trades.filter((d) => d.rule === rid && (u === 'all' || d.likely_htb !== true));
+  };
+
+  dash.calc('hist', {
+    inputs: ['trades'],
+    title: 'Trades by return band, chosen rule',
+    description: 'Count of the chosen rule\'s trades in each 10-point band of return after costs. Returns beyond ±90% are counted in the end bands.',
+    fn: (trades) => {
+      const t = pickTrades(trades);
+      const bins = d3.range(20).map((k) => ({ k, lo: (k - 10) / 10, hi: (k - 9) / 10, count: 0 }));
+      for (const d of t) bins[Math.max(0, Math.min(19, Math.floor(d.ret * 10) + 10))].count += 1;
+      return bins.map((b) => ({
+        band: b.k === 0 ? '−90% or worse' : b.k === 19 ? '+90% or better' : `${d3.format('.0%')(b.lo)} to ${d3.format('.0%')(b.hi)}`,
+        lo: b.lo, hi: b.hi, count: b.count,
+      }));
+    },
+  });
+
+  dash.calc('buckets', {
+    inputs: ['trades'],
+    title: 'Chosen rule by gap size',
+    description: 'Trades, win rate and average return per trade of the chosen rule, split by the pre-market gap at 9:25.',
+    fn: (trades) => {
+      const t = pickTrades(trades);
+      return ['50-100%', '100-200%', '200%+'].map((b) => {
+        const g = t.filter((d) => d.gap_bucket === b);
+        return { gap_bucket: b, trades: g.length, win_rate: g.length ? g.filter((d) => d.ret > 0).length / g.length : null, avg_ret: g.length ? d3.mean(g, (d) => d.ret) : null };
+      });
+    },
+  });
+
+  dash.calc('months', {
+    inputs: ['trades'],
+    title: 'Chosen rule by month',
+    description: 'Trades and average return per trade of the chosen rule in each calendar month of its gap date.',
+    fn: (trades) => {
+      const t = pickTrades(trades);
+      return d3.rollups(t, (g) => ({ trades: g.length, avg_ret: d3.mean(g, (d) => d.ret) }), (d) => d.date.slice(0, 7))
+        .sort((a, b) => d3.ascending(a[0], b[0]))
+        .map(([month, v]) => ({ month, ...v }));
+    },
+  });
+
+  dash.calc('worst', {
+    inputs: ['trades'],
+    title: 'Worst 10 trades, chosen rule',
+    description: 'The 10 trades of the chosen rule with the lowest return after costs.',
+    fn: (trades) => pickTrades(trades).slice().sort((a, b) => a.ret - b.ret).slice(0, 10)
+      .map((d) => ({ date: d.date, ticker: d.ticker, gap_bucket: d.gap_bucket, ret: d.ret, mae: d.mae })),
+  });
+
+  dash.calc('gstats', {
+    inputs: ['gappers'],
+    title: 'What the gappers did',
+    description: 'Share of build-year gappers that closed below their open, the median open-to-close move, and the share flagged likely hard to borrow.',
+    fn: (gappers) => {
+      const g = gappers.filter((d) => d.day_return_from_open !== null && d.day_return_from_open !== undefined);
+      return [{
+        gappers: gappers.length,
+        closed_below_open: g.filter((d) => d.day_return_from_open < 0).length / g.length,
+        median_day_ret: d3.median(g, (d) => d.day_return_from_open),
+        likely_htb: gappers.filter((d) => d.likely_htb === true).length / gappers.length,
+      }];
+    },
+  });
+
+  dash.calc('hod', {
+    inputs: ['gappers'],
+    title: 'Hour of the day\'s high',
+    description: 'Share of build-year gappers whose regular-session high came in each hour.',
+    fn: (gappers) => {
+      const g = gappers.filter((d) => d.hod_time);
+      const hours = d3.range(9, 16);
+      return hours.map((h) => {
+        const n = g.filter((d) => Number(d.hod_time.slice(0, 2)) === h).length;
+        const lab = (x) => (x > 12 ? x - 12 : x) + (x >= 12 ? ' pm' : ' am');
+        return { hour: h, label: lab(h), count: n, share: n / g.length };
+      });
+    },
+  });
+
+  dash.calc('dayhist', {
+    inputs: ['gappers'],
+    title: 'Gappers by open-to-close move',
+    description: 'Count of build-year gappers in each 10-point band of their move from the 9:30 open to the close. Moves beyond ±60% are counted in the end bands.',
+    fn: (gappers) => {
+      const bins = d3.range(12).map((k) => ({ k, lo: (k - 6) / 10, hi: (k - 5) / 10, count: 0 }));
+      for (const d of gappers) {
+        if (d.day_return_from_open === null || d.day_return_from_open === undefined) continue;
+        bins[Math.max(0, Math.min(11, Math.floor(d.day_return_from_open * 10) + 6))].count += 1;
+      }
+      return bins.map((b) => ({
+        band: b.k === 0 ? '−50% or worse' : b.k === 11 ? '+50% or better' : `${d3.format('.0%')(b.lo)} to ${d3.format('.0%')(b.hi)}`,
+        lo: b.lo, hi: b.hi, count: b.count,
+      }));
+    },
+  });
+</script>
+
+<script>
+  // ---------- controls: listen, and reflect the current choice
+  (() => {
+    const set = (o) => dash.setParams(o);
+    document.querySelectorAll('#tfs-entry').forEach((el) => el.addEventListener('change', () => set({ entry: el.value })));
+    document.querySelectorAll('#tfs-exit').forEach((el) => el.addEventListener('change', () => set({ exit: el.value })));
+    document.querySelectorAll('.tfs-stop').forEach((b) => b.addEventListener('click', () => set({ stop: b.dataset.stop })));
+    document.querySelectorAll('.tfs-uni').forEach((b) => b.addEventListener('click', () => set({ universe: b.dataset.universe })));
+    document.querySelectorAll('.tfs-cell').forEach((b) => b.addEventListener('click', () => {
+      set({ entry: b.dataset.entry, exit: b.dataset.exit });
+      document.querySelectorAll('#selected').forEach((s) => s.scrollIntoView({ behavior: 'smooth', block: 'start' }));
+    }));
+    dash.onData(() => {
+      const s = TFS.P();
+      document.querySelectorAll('#tfs-entry').forEach((el) => { if (document.activeElement !== el) el.value = s.entry; });
+      document.querySelectorAll('#tfs-exit').forEach((el) => { if (document.activeElement !== el) el.value = s.exit; });
+      document.querySelectorAll('.tfs-stop').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.stop === s.stop)));
+      document.querySelectorAll('.tfs-uni').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.universe === s.universe)));
+      document.querySelectorAll('.tfs-cell').forEach((b) => b.classList.toggle('is-sel', b.dataset.entry === s.entry && b.dataset.exit === s.exit));
+      document.querySelectorAll('.tfs-untested').forEach((n) => { n.hidden = TFS.valid(s.entry, s.exit); });
+      const r = TFS.findRule(TFS.rule(s), s.universe);
+      document.querySelectorAll('.tfs-owes').forEach((n) => { n.hidden = !(r && r.acct_end !== null && r.acct_end < 0); });
+      document.querySelectorAll('.tfs-gapnote').forEach((n) => { n.hidden = !(r && r.expectancy > 0 && r.acct_return !== null && r.acct_return < 0 && r.acct_end >= 0); });
+      const ok = r && TFS.valid(s.entry, s.exit) && r.t_stat !== null;
+      const v = !ok ? '' : r.expectancy <= 0 ? 'lose' : r.t_stat < 2 ? 'luck' : r.t_stat < 3 ? 'promising' : 'strong';
+      document.querySelectorAll('[data-verdict]').forEach((n) => { n.hidden = n.dataset.verdict !== v; });
+      const b = dash.data('best');
+      const all = b.status === 'ok' && Array.isArray(b.data) ? b.data.find((d) => d.kind === 'all') : undefined;
+      const allRule = all ? TFS.findRule(all.rule, s.universe) : undefined;
+      document.querySelectorAll('.tfs-overnight').forEach((n) => { n.hidden = !(allRule && allRule.same_day === false); });
+    });
+  })();
+</script>
+
+<script>
+  // ---------- headline sentence
+  const bestRow = (kind) => { const b = dash.data('best'); return b.status === 'ok' && Array.isArray(b.data) ? b.data.find((d) => d.kind === kind) : undefined; };
+  [['Same', 'same_day'], ['All', 'all']].forEach(([k, kind]) => {
+    dash.draw(`best${k}Rule`, (el) => { const r = bestRow(kind); el.textContent = r ? TFS.ruleText(r.rule) : '—'; });
+    dash.draw(`best${k}Exp`, (el) => { const r = bestRow(kind); el.textContent = r ? TFS.pct(r.expectancy) : '—'; if (r) TFS.signClass(el, r.expectancy); });
+    dash.draw(`best${k}T`, (el) => { const r = bestRow(kind); el.textContent = r && r.t_stat !== null ? r.t_stat.toFixed(1) : '—'; });
+  });
+  const sumVal = (f, fmt) => (el) => { const s = dash.data('summary'); el.textContent = s.status === 'ok' && s.data[0] ? fmt(s.data[0][f]) : '—'; };
+  const utcDay = d3.utcFormat('%b %-d, %Y');
+  const asDay = (v) => utcDay(new Date(v + 'T00:00:00Z'));
+  dash.draw('nBuild', sumVal('build_gappers', d3.format(',')));
+  dash.draw('nTest', sumVal('test_gappers', d3.format(',')));
+  dash.draw('bStart', sumVal('build_start', asDay));
+  dash.draw('bEnd', sumVal('build_end', asDay));
+  dash.draw('startEq', sumVal('start_equity', TFS.money));
+  dash.draw('riskPct', sumVal('risk_per_trade', d3.format('.1%')));
+  dash.draw('maxTr', sumVal('max_trades_per_day', String));
+
+  // ---------- matrix cells
+  const cellRule = (el) => {
+    const b = el.closest('.tfs-cell');
+    const s = TFS.P();
+    return { b, rid: `${b.dataset.entry}|${b.dataset.exit}|${s.stop}`, u: s.universe };
+  };
+  dash.draw('cell', (el) => {
+    const { b, rid, u } = cellRule(el);
+    el.dataset.where = TFS.where(rid, u);
+    const r = TFS.findRule(rid, u);
+    if (!r || r.expectancy === null) { el.textContent = '—'; b.style.background = ''; return; }
+    el.textContent = TFS.pct(r.expectancy);
+    const k = Math.min(1, Math.abs(r.expectancy) / 0.05);
+    const c = r.expectancy >= 0 ? 'var(--color-ok)' : 'var(--color-bad)';
+    b.style.background = `color-mix(in srgb, ${c} ${Math.round(8 + k * 52)}%, var(--color-bg))`;
+  });
+  dash.draw('cellt', (el) => {
+    const { rid, u } = cellRule(el);
+    el.dataset.where = TFS.where(rid, u);
+    const r = TFS.findRule(rid, u);
+    el.textContent = r && r.t_stat !== null ? `t ${r.t_stat.toFixed(1)} · ${r.trades}` : '—';
+  });
+
+  // ---------- selected-rule tiles
+  const selRule = () => { const s = TFS.P(); return { s, rid: TFS.rule(s), r: TFS.valid(s.entry, s.exit) ? TFS.findRule(TFS.rule(s), s.universe) : undefined }; };
+  dash.draw('selName', (el) => { const { s, rid } = selRule(); el.textContent = TFS.valid(s.entry, s.exit) ? `${TFS.ruleText(rid).replace(/^./, (c) => c.toUpperCase())}. ${s.universe === 'all' ? 'All gappers.' : 'Borrowable gappers only.'}` : 'This combination is not tested.'; });
+  const tile = (name, field, fmt, signed) => dash.draw(name, (el) => {
+    const { s, rid, r } = selRule();
+    el.dataset.where = TFS.where(rid, s.universe);
+    const v = r ? r[field] : null;
+    el.textContent = v === null || v === undefined ? '—' : fmt(v);
+    if (signed) TFS.signClass(el, v ?? 0);
+  });
+  tile('tExp', 'expectancy', TFS.pct, true);
+  tile('tGross', 'gross_expectancy', TFS.pct, true);
+  tile('tT', 't_stat', (v) => v.toFixed(2));
+  tile('tN', 'trades', d3.format(','));
+  tile('tWin', 'win_rate', TFS.pct0);
+  tile('tAw', 'avg_win', TFS.pct, true);
+  tile('tAl', 'avg_loss', TFS.pct, true);
+  tile('tWorst', 'worst', d3.format('+,.0%'), true);
+  tile('tMae', 'mae_p95', (v) => '+' + d3.format('.0%')(v));
+  tile('acctEnd', 'acct_end', TFS.money, true);
+  tile('acctDd', 'acct_max_dd', d3.format('.0%'));
+</script>
+
+<script>
+  // ---------- charts
+  window.TFSChart = (() => {
+    const placeholder = (el, st) => {
+      el.replaceChildren();
+      if (st === 'error') { const d = document.createElement('div'); d.className = 'tfs-fail'; d.textContent = 'Failed to load'; el.append(d); }
+    };
+    const tip = (el) => { const t = document.createElement('div'); t.className = 'tfs-tip'; t.hidden = true; el.append(t); return t; };
+    const showTip = (t, el, event, lines) => {
+      t.replaceChildren(...lines.map((s, i) => { const d = document.createElement('div'); d.textContent = s; if (i === 0) d.style.fontWeight = '600'; return d; }));
+      t.hidden = false;
+      const box = el.getBoundingClientRect();
+      const x = event.clientX - box.left, y = event.clientY - box.top;
+      const w = t.offsetWidth;
+      t.style.left = Math.max(0, Math.min(box.width - w, x - w / 2)) + 'px';
+      t.style.top = Math.max(0, y - t.offsetHeight - 12) + 'px';
+    };
+    const fitLeft = (svg, g) => {
+      let w = 0;
+      g.selectAll('text').each(function () { w = Math.max(w, this.getComputedTextLength()); });
+      return w;
+    };
+
+    // vertical bars: rows with a category label, a value; color by value sign or single series
+    const bars = (el, rows, { x, y, yFmt, signed, tipLines, xTickEvery = 1, aria }) => {
+      el.replaceChildren();
+      const W = Math.max(280, el.clientWidth), H = 230;
+      const svg = d3.select(el).append('svg').attr('viewBox', `0 0 ${W} ${H}`).attr('role', 'img').attr('aria-label', aria);
+      const ext = d3.extent(rows, (d) => d[y]);
+      const lo = Math.min(0, ext[0] ?? 0), hi = Math.max(0, ext[1] ?? 0) || 1;
+      const yS = d3.scaleLinear().domain([lo, hi]).nice();
+      const probe = svg.append('g').call(d3.axisLeft(yS).ticks(5).tickFormat(yFmt));
+      const ml = fitLeft(svg, probe) + 10; probe.remove();
+      const m = { t: 10, r: 8, b: 44, l: ml };
+      yS.range([H - m.b, m.t]);
+      const xS = d3.scaleBand().domain(rows.map((d) => d[x])).range([m.l, W - m.r]).padding(0.18);
+      svg.append('g').attr('transform', `translate(${m.l},0)`).call(d3.axisLeft(yS).ticks(5).tickSize(-(W - m.l - m.r)).tickFormat(yFmt))
+        .call((g) => g.select('.domain').remove()).call((g) => g.selectAll('.tick line').style('stroke', 'var(--cds-chart-grid)'));
+      const every = Math.max(xTickEvery, Math.ceil(rows.length / Math.max(1, Math.floor((W - m.l) / 64))));
+      svg.append('g').attr('transform', `translate(0,${H - m.b})`)
+        .call(d3.axisBottom(xS).tickValues(rows.map((d) => d[x]).filter((_, i) => i % every === 0)).tickSizeOuter(0))
+        .call((g) => g.selectAll('text').attr('transform', 'rotate(-30)').style('text-anchor', 'end').attr('dx', '-.4em').attr('dy', '.6em'));
+      svg.append('line').attr('x1', m.l).attr('x2', W - m.r).attr('y1', yS(0)).attr('y2', yS(0)).style('stroke', 'var(--cds-chart-axis)');
+      const t = tip(el);
+      svg.append('g').selectAll('rect').data(rows).join('rect')
+        .attr('x', (d) => xS(d[x])).attr('width', xS.bandwidth())
+        .attr('y', (d) => yS(Math.max(0, d[y] ?? 0))).attr('height', (d) => Math.abs(yS(d[y] ?? 0) - yS(0)))
+        .style('fill', (d) => (signed ? (d[y] >= 0 ? 'var(--color-ok)' : 'var(--color-bad)') : dash.colors[0]))
+        .on('pointermove', (event, d) => showTip(t, el, event, tipLines(d)))
+        .on('pointerleave', () => { t.hidden = true; });
+    };
+
+    const line = (el, pts, { aria, zero }) => {
+      el.replaceChildren();
+      const W = Math.max(280, el.clientWidth), H = 230;
+      const svg = d3.select(el).append('svg').attr('viewBox', `0 0 ${W} ${H}`).attr('role', 'img').attr('aria-label', aria);
+      const ext = d3.extent(pts, (d) => d.equity);
+      const yS = d3.scaleLinear().domain([Math.min(ext[0], zero), Math.max(ext[1], zero)]).nice();
+      const fmt = (v) => (v < 0 ? '−$' : '$') + d3.format('~s')(Math.abs(v));
+      const probe = svg.append('g').call(d3.axisLeft(yS).ticks(5).tickFormat(fmt));
+      const ml = fitLeft(svg, probe) + 10; probe.remove();
+      const m = { t: 10, r: 12, b: 30, l: ml };
+      yS.range([H - m.b, m.t]);
+      const xS = d3.scaleLinear().domain(d3.extent(pts, (d) => d.n)).range([m.l, W - m.r]);
+      svg.append('g').attr('transform', `translate(${m.l},0)`).call(d3.axisLeft(yS).ticks(5).tickSize(-(W - m.l - m.r)).tickFormat(fmt))
+        .call((g) => g.select('.domain').remove()).call((g) => g.selectAll('.tick line').style('stroke', 'var(--cds-chart-grid)'));
+      svg.append('g').attr('transform', `translate(0,${H - m.b})`).call(d3.axisBottom(xS).ticks(Math.min(6, pts.length)).tickFormat((v) => `#${v}`).tickSizeOuter(0));
+      if (yS.domain()[0] < 0) {
+        svg.append('rect').attr('x', m.l).attr('width', W - m.l - m.r).attr('y', yS(0)).attr('height', Math.max(0, yS(yS.domain()[0]) - yS(0)))
+          .style('fill', 'var(--cds-chart-status-critical)').style('opacity', 0.12);
+        svg.append('line').attr('x1', m.l).attr('x2', W - m.r).attr('y1', yS(0)).attr('y2', yS(0)).style('stroke', 'var(--cds-chart-status-critical)');
+      }
+      svg.append('line').attr('x1', m.l).attr('x2', W - m.r).attr('y1', yS(zero)).attr('y2', yS(zero))
+        .style('stroke', 'var(--cds-chart-reference)').style('stroke-dasharray', '4 4');
+      svg.append('path').datum(pts).attr('d', d3.line().x((d) => xS(d.n)).y((d) => yS(d.equity)))
+        .style('fill', 'none').style('stroke', dash.colors[0]).style('stroke-width', 2);
+      const last = pts[pts.length - 1];
+      svg.append('circle').attr('cx', xS(last.n)).attr('cy', yS(last.equity)).attr('r', 3.5).style('fill', dash.colors[0]);
+      const t = tip(el);
+      const dot = svg.append('circle').attr('r', 4).style('fill', dash.colors[0]).style('display', 'none');
+      const bis = d3.bisector((d) => d.n).center;
+      svg.append('rect').attr('x', m.l).attr('y', m.t).attr('width', W - m.l - m.r).attr('height', H - m.t - m.b).style('fill', 'transparent')
+        .on('pointermove', (event) => {
+          const [px] = d3.pointer(event);
+          const d = pts[bis(pts, xS.invert(px))];
+          dot.style('display', null).attr('cx', xS(d.n)).attr('cy', yS(d.equity));
+          showTip(t, el, event, [d.n === 0 ? 'Start' : `After trade #${d.n}`, TFS.money(d.equity), d.date ? d3.utcFormat('%b %-d, %Y')(new Date(d.date + 'T00:00:00Z')) : '']);
+        })
+        .on('pointerleave', () => { t.hidden = true; dot.style('display', 'none'); });
+    };
+    return { placeholder, bars, line };
+  })();
+
+  dash.draw('hist', (el) => {
+    const h = dash.data('hist');
+    if (h.status !== 'ok' || !Array.isArray(h.data)) return TFSChart.placeholder(el, h.status);
+    TFSChart.bars(el, h.data, {
+      x: 'band', y: 'count', yFmt: d3.format(','), signed: false, xTickEvery: 2,
+      aria: 'Bar chart of how many trades fell in each band of return for the chosen rule',
+      tipLines: (d) => [d.band, `${d3.format(',')(d.count)} trades`],
+    });
+    d3.select(el).selectAll('rect').style('fill', (d) => (d.lo >= 0 ? 'var(--color-ok)' : 'var(--color-bad)')).style('opacity', 0.85);
+  });
+
+  dash.draw('equity', (el) => {
+    const c = dash.data('curves');
+    if (c.status !== 'ok') return TFSChart.placeholder(el, c.status);
+    const s = TFS.P();
+    const pts = c.data.filter((d) => d.rule === TFS.rule(s) && d.universe === s.universe).sort((a, b) => a.n - b.n);
+    if (pts.length < 2) { el.replaceChildren(); const d = document.createElement('div'); d.className = 'tfs-fail'; d.textContent = 'No trades for this choice'; el.append(d); return; }
+    TFSChart.line(el, pts, { zero: pts[0].equity, aria: 'Line chart of the practice account balance after each trade of the chosen rule' });
+  });
+
+  dash.draw('buckets', (el) => {
+    const b = dash.data('buckets');
+    if (b.status !== 'ok' || !Array.isArray(b.data)) return TFSChart.placeholder(el, b.status);
+    TFSChart.bars(el, b.data.filter((d) => d.trades > 0), {
+      x: 'gap_bucket', y: 'avg_ret', yFmt: d3.format('+.0%'), signed: true,
+      aria: 'Bar chart of the chosen rule\'s average return per trade by gap size',
+      tipLines: (d) => [`Gap ${d.gap_bucket}`, `${TFS.pct(d.avg_ret)} per trade`, `${d.trades} trades, ${TFS.pct0(d.win_rate)} won`],
+    });
+  });
+
+  dash.draw('months', (el) => {
+    const m = dash.data('months');
+    if (m.status !== 'ok' || !Array.isArray(m.data)) return TFSChart.placeholder(el, m.status);
+    const f = d3.utcFormat('%b %y');
+    const rows = m.data.map((d) => ({ ...d, label: f(new Date(d.month + '-01T00:00:00Z')) }));
+    TFSChart.bars(el, rows, {
+      x: 'label', y: 'avg_ret', yFmt: d3.format('+.0%'), signed: true,
+      aria: 'Bar chart of the chosen rule\'s average return per trade in each month',
+      tipLines: (d) => [d.label, `${TFS.pct(d.avg_ret)} per trade`, `${d.trades} trades`],
+    });
+  });
+
+  dash.draw('worstRows', (el) => {
+    const w = dash.data('worst');
+    el.replaceChildren();
+    if (w.status !== 'ok' || !Array.isArray(w.data)) return;
+    const f = d3.utcFormat('%b %-d, %Y');
+    for (const d of w.data) {
+      const tr = document.createElement('tr');
+      tr.dataset.key = `${encodeURIComponent(d.date)},${encodeURIComponent(d.ticker)}`;
+      [f(new Date(d.date + 'T00:00:00Z')), d.ticker, d.gap_bucket, d3.format('+,.0%')(d.ret), '+' + d3.format(',.0%')(d.mae)].forEach((v, i) => {
+        const td = document.createElement('td');
+        td.textContent = v;
+        if (i === 3) td.className = d.ret < 0 ? 'tfs-neg' : 'tfs-pos';
+        tr.append(td);
+      });
+      el.append(tr);
+    }
+  });
+
+  const gs = (f, fmt) => (el) => { const g = dash.data('gstats'); el.textContent = g.status === 'ok' && g.data && g.data[0] ? fmt(g.data[0][f]) : '—'; };
+  dash.draw('gBelow', gs('closed_below_open', d3.format('.0%')));
+  dash.draw('gMed', gs('median_day_ret', d3.format('+.1%')));
+  dash.draw('gHtb', gs('likely_htb', d3.format('.0%')));
+
+  dash.draw('hod', (el) => {
+    const h = dash.data('hod');
+    if (h.status !== 'ok' || !Array.isArray(h.data)) return TFSChart.placeholder(el, h.status);
+    TFSChart.bars(el, h.data, {
+      x: 'label', y: 'share', yFmt: d3.format('.0%'), signed: false,
+      aria: 'Bar chart of the share of gappers whose daily high came in each hour',
+      tipLines: (d) => [`${d.label} hour`, `${TFS.pct0(d.share)} of gappers (${d.count})`],
+    });
+  });
+
+  dash.draw('dayhist', (el) => {
+    const h = dash.data('dayhist');
+    if (h.status !== 'ok' || !Array.isArray(h.data)) return TFSChart.placeholder(el, h.status);
+    TFSChart.bars(el, h.data, {
+      x: 'band', y: 'count', yFmt: d3.format(','), signed: false, xTickEvery: 2,
+      aria: 'Bar chart of how many gappers fell in each band of open-to-close move',
+      tipLines: (d) => [d.band, `${d.count} gappers`],
+    });
+    d3.select(el).selectAll('rect').style('fill', (d) => (d.hi <= 0 ? 'var(--color-ok)' : 'var(--color-bad)')).style('opacity', 0.85);
+  });
+</script>
