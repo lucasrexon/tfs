@@ -7,6 +7,8 @@ import math
 def margin_requirement(price: float, shares: int, rule: str = "finra") -> float:
     """Maintenance margin for a SHORT (FINRA Rule 4210, or a strict $5/share house rule)."""
     value = price * shares
+    if rule == "full":                      # brokers often demand 100% on a squeezing small cap, at any price
+        return max(2.5 * shares, value)
     if rule == "house5" and price < 5:
         return max(5.0 * shares, value)
     if price < 5:

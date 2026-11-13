@@ -10,3 +10,6 @@ __pycache__/
 STOP
 tfs_head_start.zip
 dashboard/
+prep.log
+features.log
+research.log
