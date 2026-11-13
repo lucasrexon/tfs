@@ -20,7 +20,7 @@ import pandas as pd
 
 from tfs.config import load_config, resolve
 from tfs.v2.features import load_gappers
-from tfs.v2.margin import f_max, survives
+from tfs.v2.margin import f_max
 from tfs.v2.paths import simulate, squeeze_multiple
 from tfs.v2.prep import next_days
 from tfs.v2.stats2 import Logit, auc, correlate, cvar, lift_table, wilson
@@ -73,26 +73,48 @@ def method_table(t: pd.DataFrame, years: float) -> pd.DataFrame:
                      "t_stat": float(r.mean() / (r.std(ddof=1) / np.sqrt(len(r)))) if r.std() > 0 else np.nan,
                      "R_p95": float(x["R"].quantile(.95)), "R_p99": float(x["R"].quantile(.99)), "R_max": float(x["R"].max()),
                      "f_safe": f_safe, "reserve": 1 - f_safe,
-                     "acct_per_trade": float(r.mean()) * f_safe,
-                     "acct_per_year": float(r.mean()) * f_safe * len(x) / years})
+                     "acct_per_trade": float(r.mean()) * f_safe, **account_mc(x, f_safe, years)})
     return pd.DataFrame(rows)
 
 
-def account_sim(x: pd.DataFrame, f: float, start: float = 10000.0) -> dict:
-    """One position at a time, fixed fraction f of current equity, no stop."""
-    x = x.sort_values(["date", "entry_time"])
-    eq, busy_until, n, liq, peak, dd = start, "", 0, None, start, 0.0
-    for r in x.itertuples(index=False):
-        if r.date <= busy_until:
-            continue
-        if not survives(r.entry_px, f, r.R, MARGIN_RULE):
-            liq = f"{r.ticker} {r.date} (ran to {r.R:.1f}x)"
-            break
-        eq *= 1 + f * r.ret
-        busy_until = r.exit_date
-        n += 1
-        peak = max(peak, eq); dd = min(dd, eq / peak - 1)
-    return {"trades": n, "end": eq, "ret": eq / start - 1, "max_dd": dd, "liquidated": liq}
+def account_mc(x: pd.DataFrame, f: float, years: float, n_sims: int = 40, seed: int = 11) -> dict:
+    """One position at a time, fixed fraction f of equity, no stop.
+
+    Several gappers appear most days and the bot can hold only one, so WHICH one it takes is
+    luck. Each simulation shuffles the order within every day; we report the typical outcome
+    (median), a bad-luck outcome (5th percentile) and how often the account was liquidated.
+    """
+    if x.empty:
+        return {"taken": 0, "acct_per_year": 0.0, "acct_p5": 0.0, "p_liq": 0.0, "acct_max_dd": 0.0}
+    d = pd.to_datetime(x["date"]).to_numpy().astype("datetime64[D]").astype(int)
+    e = pd.to_datetime(x["exit_date"]).to_numpy().astype("datetime64[D]").astype(int)
+    ret = x["ret"].to_numpy()
+    f_liq = np.array([f_max(p, R, MARGIN_RULE) for p, R in zip(x["entry_px"], x["R"])])   # bigger than this = liquidated
+    rng = np.random.default_rng(seed)
+    outs, liqs, taken, dds = [], 0, [], []
+    for _ in range(n_sims):
+        order = np.lexsort((rng.random(len(d)), d))
+        eq, busy, n, peak, dd, dead = 1.0, -1, 0, 1.0, 0.0, False
+        for i in order:
+            if d[i] <= busy:
+                continue
+            if f > f_liq[i]:
+                dead = True
+                break
+            eq *= 1 + f * ret[i]
+            busy = e[i]
+            n += 1
+            if eq > peak:
+                peak = eq
+            elif eq / peak - 1 < dd:
+                dd = eq / peak - 1
+        liqs += dead
+        outs.append(-1.0 if dead else eq - 1)
+        taken.append(n); dds.append(dd)
+    outs = np.array(outs)
+    ann = lambda r: (1 + r) ** (1 / years) - 1 if r > -1 else -1.0
+    return {"taken": int(np.median(taken)), "acct_per_year": ann(float(np.median(outs))),
+            "acct_p5": ann(float(np.percentile(outs, 5))), "p_liq": liqs / n_sims, "acct_max_dd": float(np.median(dds))}
 
 
 def main():
@@ -107,8 +129,8 @@ def main():
     feat = pd.read_parquet(od / "features.parquet")
     feat = feat[feat["date"] <= be].merge(sq, on=["date", "ticker"], how="left")
     feat["recent_ipo"] = (feat["days_since_ipo"] < 180).astype(float).where(feat["days_since_ipo"].notna())
-    feat["squeeze"] = (feat["sq5"] >= SQUEEZE_X).astype(int)
-    t = t.merge(feat[["date", "ticker", "pm_gap", "squeeze", "sq5"]], on=["date", "ticker"], how="left")
+    feat["sqz"] = (feat["sq5"] >= SQUEEZE_X).astype(int)
+    t = t.merge(feat[["date", "ticker", "pm_gap", "sqz", "sq5"]], on=["date", "ticker"], how="left")
     days = sorted(g["date"].unique())
     years = max(0.25, (pd.Timestamp(days[-1]) - pd.Timestamp(days[0])).days / 365.25)
     mid = days[len(days) // 2]
@@ -119,6 +141,8 @@ def main():
     # ---------- 1. methods, per gap level
     best_rows = []
     for lvl in GAP_LEVELS:
+        if lvl < round(float(g.pm_gap.min()), 2) - 0.005:
+            continue                                       # this level is not in the downloaded data yet
         tl = t[t["pm_gap"] >= lvl]
         if tl[["date", "ticker"]].drop_duplicates().shape[0] < 60:
             continue
@@ -127,8 +151,8 @@ def main():
         best_rows.append(mt)
     methods = pd.concat(best_rows, ignore_index=True)
     methods.to_parquet(od / "methods.parquet")
-    cols = ["gap_level", "entry", "target", "horizon", "n", "hit_rate", "ev", "cvar5", "t_stat", "R_max", "f_safe", "acct_per_year"]
-    print("\n=== Top 15 methods by account return per year (safe size, all trades taken) ===")
+    cols = ["gap_level", "entry", "target", "horizon", "n", "taken", "hit_rate", "ev", "cvar5", "t_stat", "R_max", "f_safe", "acct_per_year", "acct_p5", "acct_max_dd"]
+    print("\n=== Top 15 methods by typical account growth per year (safe size, one position at a time, random pick each day) ===")
     print(methods.sort_values("acct_per_year", ascending=False).head(15)[cols].round(4).to_string(index=False))
     print("\n=== Top 10 by EV per trade (before sizing) ===")
     print(methods.sort_values("ev", ascending=False).head(10)[cols].round(4).to_string(index=False))
@@ -142,7 +166,13 @@ def main():
     wf = m1.merge(m2, on=["entry", "target", "horizon"], suffixes=("_h1", "_h2"))
     top1 = wf.sort_values("acct_per_year_h1", ascending=False).head(10)
     print("\n=== Walk-forward (gap >= 50%): top 10 picked on first half, how they did on second half ===")
-    print(top1[["entry", "target", "horizon", "n_h1", "ev_h1", "f_safe_h1", "acct_per_year_h1", "n_h2", "ev_h2", "R_max_h2", "acct_per_year_h2"]].round(4).to_string(index=False))
+    print(top1[["entry", "target", "horizon", "n_h1", "ev_h1", "f_safe_h1", "acct_per_year_h1", "n_h2", "ev_h2", "R_max_h1", "R_max_h2", "acct_per_year_h2"]].round(4).to_string(index=False))
+    print("\nSame picks on the second half, sized with the FIRST half's safe size (what you would really have used):")
+    for r in top1.head(6).itertuples(index=False):
+        x2 = h2[(h2.pm_gap >= .5) & (h2.entry == r.entry) & (h2.target == r.target) & (h2.horizon == r.horizon)]
+        a = account_mc(x2, r.f_safe_h1, years / 2, n_sims=300)
+        print(f"  {r.entry:>9} target {r.target:.0%} limit {int(r.horizon):>2}d  position {r.f_safe_h1:.1%}: ~{a['taken']} trades, "
+              f"typical {a['acct_per_year']:+.1%}/yr, bad luck {a['acct_p5']:+.1%}/yr, liquidated in {a['p_liq']:.0%} of runs")
     rank_corr = wf[["ev_h1", "ev_h2"]].corr(method="spearman").iloc[0, 1]
     print(f"Rank correlation of EV between halves across all methods: {rank_corr:.2f}")
     res["wf_rank_corr"] = float(rank_corr)
@@ -157,13 +187,13 @@ def main():
     dummies = [c for c in fb.columns if "=" in c]
     feats = [c for c in BINARY + NUMERIC + dummies if c in fb.columns]
     binary = set(BINARY + dummies)
-    print(f"\n=== Extreme squeezes: {fb.squeeze.sum()} of {len(fb)} gappers ({fb.squeeze.mean():.1%}) at least doubled from the 09:25 price within 5 days ===")
-    cs = correlate(fb, feats, "squeeze", binary)
+    print(f"\n=== Extreme squeezes: {fb.sqz.sum()} of {len(fb)} gappers ({fb.sqz.mean():.1%}) at least doubled from the 09:25 price within 5 days ===")
+    cs = correlate(fb, feats, "sqz", binary)
     cs.to_csv(od / "corr_squeeze.csv", index=False)
     print(cs.head(22).round(4).to_string(index=False))
     for c in ("catalyst", "industry"):
         if c in fb:
-            lt = lift_table(fb, c, "squeeze")
+            lt = lift_table(fb, c, "sqz")
             lt.to_csv(od / f"lift_squeeze_{c}.csv", index=False)
             print(f"\nSqueeze rate by {c}:"); print(lt.round(3).to_string(index=False))
 
@@ -173,23 +203,23 @@ def main():
         if c in X:
             X[c] = np.log1p(X[c].clip(lower=0))
     a, b = fb["date"] < mid, fb["date"] >= mid
-    model = Logit(l2=5.0).fit(X[a], fb.loc[a, "squeeze"])
+    model = Logit(l2=5.0).fit(X[a], fb.loc[a, "sqz"])
     fb["sq_risk"] = model.predict(X)
-    a1, a2 = auc(fb.loc[a, "squeeze"], fb.loc[a, "sq_risk"]), auc(fb.loc[b, "squeeze"], fb.loc[b, "sq_risk"])
+    a1, a2 = auc(fb.loc[a, "sqz"], fb.loc[a, "sq_risk"]), auc(fb.loc[b, "sqz"], fb.loc[b, "sq_risk"])
     print(f"\n=== Squeeze-risk model: AUC {a1:.2f} on the half it learned from, {a2:.2f} on the half it never saw (0.50 = useless, 1.00 = perfect) ===")
     print(model.weights().head(12).round(3).to_string())
-    res.update(auc_h1=float(a1), auc_h2=float(a2), squeeze_rate=float(fb.squeeze.mean()), squeezes=int(fb.squeeze.sum()))
+    res.update(auc_h1=float(a1), auc_h2=float(a2), squeeze_rate=float(fb.sqz.mean()), squeezes=int(fb.sqz.sum()))
     oos = fb[b].copy()
     print("\nSecond half (unseen), skipping the riskiest X% by the model:")
     rows = []
     for skip in (0, .1, .2, .3, .5):
         cut = oos["sq_risk"].quantile(1 - skip) if skip else np.inf
         keep = oos[oos["sq_risk"] <= cut]
-        rows.append({"skip": skip, "kept": len(keep), "squeezes_left": int(keep.squeeze.sum()),
-                     "squeeze_rate": keep.squeeze.mean(), "worst_sq5": keep.sq5.max(), "p99_sq5": keep.sq5.quantile(.99)})
+        rows.append({"skip": skip, "kept": len(keep), "squeezes_left": int(keep.sqz.sum()),
+                     "squeeze_rate": keep.sqz.mean(), "worst_sq5": keep.sq5.max(), "p99_sq5": keep.sq5.quantile(.99)})
     sk = pd.DataFrame(rows); print(sk.round(3).to_string(index=False))
     sk.to_csv(od / "skip_oos.csv", index=False)
-    fb[["date", "ticker", "sq5", "squeeze", "sq_risk"]].to_parquet(od / "sq_risk.parquet")
+    fb[["date", "ticker", "sq5", "sqz", "sq_risk"]].to_parquet(od / "sq_risk.parquet")
 
     # ---------- 5. success study for the 20% target
     pick = methods[(methods.gap_level == .5) & (methods.target == .20)].sort_values("acct_per_year", ascending=False).iloc[0]
@@ -205,12 +235,29 @@ def main():
             lt = lift_table(fs, c, "success"); lt.to_csv(od / f"lift_success_{c}.csv", index=False)
             print(f"\n20%-target hit rate by {c}:"); print(lt.round(3).to_string(index=False))
 
-    # ---------- 6. account simulation of the pick, with and without the squeeze filter (second half only for the filter)
-    print(f"\n=== $10,000 account, one position at a time, method: {pick.entry} / 20% target / {int(pick.horizon)}-day limit ===")
-    for label, x, f in (("whole build year, safe size", sel, pick.f_safe),
-                        ("whole build year, 2x safe size", sel, min(1, pick.f_safe * 2)),
-                        ("whole build year, 5x safe size", sel, min(1, pick.f_safe * 5))):
-        print(f"  {label} (position {f:.1%}): {account_sim(x, f)}")
+    # ---------- 6. account simulation: the best 20%-target method, and the top method overall
+    top = methods[methods.gap_level >= .5].sort_values("acct_per_year", ascending=False).iloc[0]
+    res["top"] = {k: (float(v) if isinstance(v, (int, float, np.floating, np.integer)) else v) for k, v in top.to_dict().items()}
+    for name, m in (("best with your 20% target", pick), ("top method overall", top)):
+        x = t[(t.entry == m.entry) & (t.target == m.target) & (t.horizon == m.horizon) & (t.pm_gap >= m.gap_level)]
+        print(f"\n=== $10,000 account, {name}: gap >= {m.gap_level:.0%}, entry {m.entry}, target {m.target:.0%}, limit {int(m.horizon)} days ===")
+        for label, f in (("safe size", m.f_safe), ("2x safe size", min(1, m.f_safe * 2)), ("5x safe size", min(1, m.f_safe * 5))):
+            a = account_mc(x, f, years, n_sims=500)
+            print(f"  {label} (position {f:.1%}): ~{a['taken']} trades, typical {a['acct_per_year']:+.1%}/yr, "
+                  f"bad luck {a['acct_p5']:+.1%}/yr, typical worst drop {a['acct_max_dd']:.1%}, liquidated in {a['p_liq']:.0%} of runs")
+        print("  If fills and borrowing cost more than assumed (0.5% slippage a side, $0.03/share locate):")
+        for extra in (0.0, 0.01, 0.03, 0.05):
+            y = x.assign(ret=x["ret"] - extra)
+            a = account_mc(y, m.f_safe, years, n_sims=300)
+            print(f"    extra cost {extra:.0%} of position per trade: EV {y.ret.mean():+.2%}, typical account {a['acct_per_year']:+.1%}/yr, bad luck {a['acct_p5']:+.1%}/yr")
+        htb = x.merge(feat[["date", "ticker", "float_rotation"]], on=["date", "ticker"])
+        easy = htb[(htb.pm_gap < 2.0) & ~(htb.float_rotation >= 3.0)]
+        if len(easy) >= 30:
+            a = account_mc(easy, m.f_safe, years, n_sims=300)
+            print(f"  Only gappers that are likely borrowable ({len(easy)} of {len(x)}): hit {easy.hit.mean():.0%}, EV {easy.ret.mean():+.2%}, "
+                  f"typical account {a['acct_per_year']:+.1%}/yr, bad luck {a['acct_p5']:+.1%}/yr")
+        else:
+            print(f"  Only {len(easy)} of {len(x)} of these gappers look borrowable: too few to trade.")
     res["pick"] = {k: (float(v) if isinstance(v, (int, float, np.floating, np.integer)) else v) for k, v in pick.to_dict().items()}
     (od / "summary.json").write_text(json.dumps(res, indent=1, default=float))
     print("\nRESEARCH DONE")

@@ -43,7 +43,8 @@ def _entries(g: dict, bars: pd.DataFrame, cfg: dict) -> list[dict]:
         hit = np.flatnonzero(h[:until] >= lim)
         if len(hit):
             i = int(hit[0])
-            out.append({"entry": f"pmh_{x:+.0%}", "px": float(max(lim, o[i])), "frame": reg, "i0": i})
+            out.append({"entry": f"pmh_{x:+.0%}", "px": float(max(lim, o[i])), "frame": reg, "i0": i,
+                        "mid_bar": bool(o[i] < lim)})     # filled inside the bar: its low may have come first
     for rule in ("first_red_5m", "vwap_loss"):
         s = find_entry(rule, reg, g["pm_high"], cfg["rules"])
         if s is not None and s.fill_idx < len(reg):
@@ -75,6 +76,8 @@ def simulate(g: dict, bars: pd.DataFrame, cfg: dict) -> list[dict]:
             f = c["frame"].iloc[c["i0"]:]
             mo, mh, ml, mc = (f[k].to_numpy() for k in ("o", "h", "l", "c"))
             mo = mo.copy(); mo[0] = px                         # the fill bar starts at our fill
+            if c.get("mid_bar"):
+                ml = ml.copy(); ml[0] = px                     # ignore the fill bar's low; keep its high
             n_min = len(f)
             eod_i = int(np.searchsorted(f.index, eod_cut))     # first bar at/after 15:55
             O = np.concatenate([mo, dO]); H = np.concatenate([mh, dH]); L = np.concatenate([ml, dL])
