@@ -181,3 +181,27 @@ def test_history_and_premarket_features_use_only_the_past():
     p = premarket_features(pd.concat([pm, after]), g)
     assert p == premarket_features(pm, g)                                        # bars after 09:25 are ignored
     assert p["pmh_late"] == 0 and 120 <= p["mins_since_pmh"] <= 127 and p["pm_ret_30"] < 0 and p["pm_vwap_dist"] > 0
+
+
+def test_r_hold_ignores_the_lucky_dip():
+    # dips 20% first (target hit), then runs to 5x: R is small, R_hold shows what was dodged
+    closes = np.r_[np.linspace(2.0, 1.55, 30), np.linspace(1.55, 10.0, 360)]
+    r = pick(simulate(gapper(), day_bars(closes), CFG), "open", 0.20, 0)
+    assert r["hit"] and r["R"] < 1.05 and r["R_hold"] == pytest.approx(5.0, abs=0.1)
+
+
+def test_disaster_stop_fills_at_the_gap_and_tail_fit():
+    from tfs.v2.disaster import hill, tail_table, with_stop
+    nxt = [{"date": "2025-03-04", "o": 9.0, "h": 12.0, "l": 8.0, "c": 10.0, "v": 1e6}]      # gaps from 2.4 to 9.0 overnight
+    g = gapper(nxt)
+    w = with_stop(g, day_bars(np.linspace(2.0, 2.4, 390)), CFG, "open", 0.20, 1, 3.0)
+    assert w["stopped"] and not w["hit"]
+    assert w["R"] == pytest.approx(9.0 * 1.03 / 2.0, abs=0.01)             # the stop was 6.0, the fill is the 9.0 open plus slippage
+    calm = with_stop(g, day_bars(np.linspace(2.0, 1.5, 390)), CFG, "open", 0.20, 1, 3.0)
+    assert calm["hit"] and not calm["stopped"]
+    rng = np.random.default_rng(0)
+    x = rng.pareto(2.0, 20000) + 1                                          # true tail index 2
+    assert hill(x, 500)[0] == pytest.approx(2.0, abs=0.25)
+    t = tail_table(x, per_year=1000, levels=(5, 50), k=500)
+    assert t.fit_per_year.iloc[0] == pytest.approx(1000 * 5.0 ** -2, rel=0.3)
+    assert t.fit_per_year.iloc[1] < t.fit_per_year.iloc[0] / 50

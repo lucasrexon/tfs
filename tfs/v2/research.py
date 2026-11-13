@@ -42,7 +42,7 @@ NUMERIC += ["rvol_pm", "dollar_adv20", "ret_5d", "ret_20d", "pm_vs_hi250", "over
 GAP_LEVELS = (0.40, 0.50, 0.75, 1.00)
 SQUEEZE_X = 2.0            # "extreme squeeze": price doubles from the 09:25 price within 5 days
 MARGIN_RULE = "full"       # 100% requirement at any price: what brokers do to a squeezing small cap
-SAFETY = 3.0               # size for a run-up 3x the worst one seen (1.5x was broken out of sample)
+SAFETY = 1.0               # position survives the worst hold-to-the-limit run-up seen (R_hold), times this
 
 
 def build_trades(cfg, g: pd.DataFrame, cache: Path, od: Path) -> tuple[pd.DataFrame, pd.DataFrame]:
@@ -73,13 +73,14 @@ def method_table(t: pd.DataFrame, years: float) -> pd.DataFrame:
         if len(x) < 40:
             continue
         r = x["ret"].to_numpy()
-        fi = np.array([f_max(p, R * SAFETY, MARGIN_RULE) for p, R in zip(x["entry_px"], x["R"])])
+        fi = np.array([f_max(p, R * SAFETY, MARGIN_RULE) for p, R in zip(x["entry_px"], x["R_hold"])])
         f_safe = float(fi.min())
         k = int(x["hit"].sum())
         rows.append({"entry": e, "target": tg, "horizon": hz, "n": len(x), "hit_rate": k / len(x),
                      "ev": float(r.mean()), "median": float(np.median(r)), "cvar5": cvar(r), "worst": float(r.min()),
                      "t_stat": float(r.mean() / (r.std(ddof=1) / np.sqrt(len(r)))) if r.std() > 0 else np.nan,
                      "R_p95": float(x["R"].quantile(.95)), "R_p99": float(x["R"].quantile(.99)), "R_max": float(x["R"].max()),
+                     "R_hold_max": float(x["R_hold"].max()),
                      "f_safe": f_safe, "reserve": 1 - f_safe,
                      "acct_per_trade": float(r.mean()) * f_safe, **account_mc(x, f_safe, years)})
     return pd.DataFrame(rows)
@@ -161,7 +162,7 @@ def main():
         best_rows.append(mt)
     methods = pd.concat(best_rows, ignore_index=True)
     methods.to_parquet(od / "methods.parquet")
-    cols = ["gap_level", "entry", "target", "horizon", "n", "taken", "hit_rate", "ev", "cvar5", "t_stat", "R_max", "f_safe", "acct_per_year", "acct_p5", "acct_max_dd"]
+    cols = ["gap_level", "entry", "target", "horizon", "n", "taken", "hit_rate", "ev", "cvar5", "t_stat", "R_max", "R_hold_max", "f_safe", "acct_per_year", "acct_p5", "acct_max_dd"]
     print("\n=== Top 15 methods by typical account growth per year (safe size, one position at a time, random pick each day) ===")
     print(methods.sort_values("acct_per_year", ascending=False).head(15)[cols].round(4).to_string(index=False))
     print("\n=== Top 10 by EV per trade (before sizing) ===")
@@ -176,7 +177,7 @@ def main():
     wf = m1.merge(m2, on=["entry", "target", "horizon"], suffixes=("_h1", "_h2"))
     top1 = wf.sort_values("acct_per_year_h1", ascending=False).head(10)
     print("\n=== Walk-forward (gap >= 50%): top 10 picked on first half, how they did on second half ===")
-    print(top1[["entry", "target", "horizon", "n_h1", "ev_h1", "f_safe_h1", "acct_per_year_h1", "n_h2", "ev_h2", "R_max_h1", "R_max_h2", "acct_per_year_h2"]].round(4).to_string(index=False))
+    print(top1[["entry", "target", "horizon", "n_h1", "ev_h1", "f_safe_h1", "acct_per_year_h1", "n_h2", "ev_h2", "R_hold_max_h1", "R_hold_max_h2", "acct_per_year_h2"]].round(4).to_string(index=False))
     print("\nSame picks on the second half, sized with the FIRST half's safe size (what you would really have used):")
     for r in top1.head(6).itertuples(index=False):
         x2 = h2[(h2.pm_gap >= .5) & (h2.entry == r.entry) & (h2.target == r.target) & (h2.horizon == r.horizon)]
@@ -190,8 +191,8 @@ def main():
         x2 = h2[(h2.pm_gap >= .5) & (h2.entry == entry) & (h2.target == r.target) & (h2.horizon == r.horizon)]
         a = account_mc(x2, r.f_safe_h1, years / 2, n_sims=300)
         fam.append({"entry": entry, "target": r.target, "limit_days": int(r.horizon), "n_h1": int(r.n_h1), "hit_h1": r.hit_rate_h1,
-                    "ev_h1": r.ev_h1, "Rmax_h1": r.R_max_h1, "position": r.f_safe_h1, "acct_h1": r.acct_per_year_h1,
-                    "n_h2": int(r.n_h2), "hit_h2": r.hit_rate_h2, "ev_h2": r.ev_h2, "t_h2": r.t_stat_h2, "Rmax_h2": r.R_max_h2,
+                    "ev_h1": r.ev_h1, "Rhold_h1": r.R_hold_max_h1, "position": r.f_safe_h1, "acct_h1": r.acct_per_year_h1,
+                    "n_h2": int(r.n_h2), "hit_h2": r.hit_rate_h2, "ev_h2": r.ev_h2, "t_h2": r.t_stat_h2, "Rhold_h2": r.R_hold_max_h2,
                     "acct_h2": a["acct_per_year"], "bad_luck_h2": a["acct_p5"], "liq_h2": a["p_liq"]})
     fam = pd.DataFrame(fam).sort_values("acct_h2", ascending=False)
     fam.to_csv(od / "families.csv", index=False)
@@ -261,17 +262,45 @@ def main():
             lt = lift_table(fs, c, "success"); lt.to_csv(od / f"lift_success_{c}.csv", index=False)
             print(f"\n20%-target hit rate by {c}:"); print(lt.round(3).to_string(index=False))
 
+    # ---------- 5b. how often do run-ups of a given size happen (measured, and a power-law fit)
+    from tfs.data.massive import MassiveClient
+    from tfs.v2.disaster import tail_table, with_stop
+    cl = MassiveClient(cfg["data"]["base_url"], cache)
+    sq50 = feat.loc[feat.pm_gap >= .5, "sq5"].to_numpy()
+    tail = tail_table(sq50, per_year=len(sq50) / years)
+    tail["position_that_survives"] = 1 / (2 * tail.run_up - 1)
+    tail.to_csv(od / "tail.csv", index=False)
+    print(f"\n=== How big do squeezes get? Run-up from the 09:25 price within 5 days, gap >= 50% (tail index {tail.attrs['alpha']:.2f}) ===")
+    print(tail.round(4).to_string(index=False))
+    res["tail_alpha"] = float(tail.attrs["alpha"])
+
     # ---------- 6. account simulation: the best 20%-target method, and the top method overall
     top = methods[methods.gap_level >= .5].sort_values("acct_per_year", ascending=False).iloc[0]
     res["top"] = {k: (float(v) if isinstance(v, (int, float, np.floating, np.integer)) else v) for k, v in top.to_dict().items()}
     for name, m in (("your 20% target at 09:25, next-day limit", ref), ("best with your 20% target", pick), ("top method overall", top)):
         x = t[(t.entry == m.entry) & (t.target == m.target) & (t.horizon == m.horizon) & (t.pm_gap >= m.gap_level)]
         print(f"\n=== $10,000 account, {name}: gap >= {m.gap_level:.0%}, entry {m.entry}, target {m.target:.0%}, limit {int(m.horizon)} days ===")
-        for label, f in (("safe size", m.f_safe), ("2x safe size", min(1, m.f_safe * 2)), ("5x safe size", min(1, m.f_safe * 5))):
+        print(f"  worst run-up before the exit {x.R.max():.1f}x; worst if the target had not been hit first {x.R_hold.max():.1f}x")
+        for surv in (10, 21, 33, 50, 100):
+            f = 1 / (2 * surv - 1)
             a = account_mc(x, f, years, n_sims=500)
-            print(f"  {label} (position {f:.1%}): ~{a['taken']} trades, typical {a['acct_per_year']:+.1%}/yr, "
+            fit = tail[tail.run_up >= surv].iloc[0] if (tail.run_up >= surv).any() else None
+            print(f"  position {f:.1%} (survives a {surv}x run-up): ~{a['taken']} trades, typical {a['acct_per_year']:+.1%}/yr, "
                   f"bad luck {a['acct_p5']:+.1%}/yr, typical worst drop {a['acct_max_dd']:.1%}, liquidated in {a['p_liq']:.0%} of runs")
+        gg = g[g.pm_gap >= m.gap_level]
+        for k in (2.0, 3.0, 5.0):
+            rows_k = [w for w in (with_stop(r, cl.minute_bars(r["ticker"], r["date"]), cfg, m.entry, m.target, int(m.horizon), k)
+                                  for r in gg.to_dict("records")) if w]
+            if not rows_k:
+                continue
+            y = pd.DataFrame(rows_k)
+            for f in (0.024, 0.015):
+                a = account_mc(y, f, years, n_sims=300)
+                print(f"  disaster stop at {k:.0f}x entry, position {f:.1%}: stopped out {y.stopped.mean():.1%} of trades, EV {y.ret.mean():+.2%}, "
+                      f"worst stop fill {y.R.max():.1f}x, typical {a['acct_per_year']:+.1%}/yr, bad luck {a['acct_p5']:+.1%}/yr, "
+                      f"typical worst drop {a['acct_max_dd']:.1%}, liquidated in {a['p_liq']:.0%} of runs")
         print("  If fills and borrowing cost more than assumed (0.5% slippage a side, $0.03/share locate):")
+        print(f"  (cost and borrow checks below use the position that survives the worst run-up seen: {m.f_safe:.1%})")
         for extra in (0.0, 0.01, 0.03, 0.05):
             y = x.assign(ret=x["ret"] - extra)
             a = account_mc(y, m.f_safe, years, n_sims=300)

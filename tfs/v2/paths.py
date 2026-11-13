@@ -3,7 +3,10 @@
 A trade ends one of two ways: the price falls to the profit target (cover there),
 or the time limit runs out (cover at that close). There is no stop-loss, so for
 every trade we also record R, the highest price reached before the exit divided
-by the entry price. R is what decides whether the account survives.
+by the entry price. R is what decides whether the account survives. R_hold is the
+same thing had the target NOT been hit: the run-up through the whole time limit.
+Position size is set from R_hold, because whether a stock dips to the target before
+it squeezes is luck.
 
 Entry families
   at a time        pm_0925, open, t_1000, t_1030, t_1100, t_1400, close_1555, next_open
@@ -220,7 +223,8 @@ def simulate(g: dict, bars: pd.DataFrame, cfg: dict) -> list[dict]:
                 nights = nights_between(s["entry_date"], s["step_date"][i])
                 rows.append({"date": g["date"], "ticker": g["ticker"], "entry": c["entry"], "target": tg, "horizon": hz,
                              "hit": is_hit, "ret": _costs(cc, px * factor, exit_px * factor, nights),
-                             "R": float(max(cmax[i], px) / px), "entry_px": px * factor,
+                             "R": float(max(cmax[i], px) / px), "R_hold": float(max(cmax[end_i], px) / px),
+                             "entry_px": px * factor,
                              "entry_time": s["entry_time"], "exit_date": s["step_date"][i], "nights": nights,
                              "partial": partial and not is_hit})
         if c["entry"] in ("pm_0925", "open"):
@@ -250,7 +254,7 @@ def _ladder(g: dict, c: dict, s: dict, cc: dict) -> list[dict]:
         if e is None:
             continue
         end_i, end_px, partial = e
-        for tg in TARGETS:
+        def walk(tg):
             held, r_eff, exit_i, exit_px, is_hit = [], 0.0, end_i, end_px, False
             for k, (fi, fp) in enumerate(fills):
                 if fi > end_i:
@@ -271,10 +275,16 @@ def _ladder(g: dict, c: dict, s: dict, cc: dict) -> list[dict]:
                 r_eff = max(r_eff, a + (1 - m_) / 2)
                 if is_hit:
                     break
+            return held, r_eff, exit_i, exit_px, is_hit
+
+        r_hold = float(max(walk(99.0)[1], 1.0))                          # target out of reach: the full run-up
+        for tg in TARGETS:
+            held, r_eff, exit_i, exit_px, is_hit = walk(tg)
             nights = nights_between(s["entry_date"], s["step_date"][exit_i])
             ret = sum(w * _costs(cc, p * factor, exit_px * factor, nights) for p in held)
             rows.append({"date": g["date"], "ticker": g["ticker"], "entry": "ladder_" + c["entry"].split("_")[0],
                          "target": tg, "horizon": hz, "hit": is_hit, "ret": ret, "R": float(max(r_eff, 1.0)),
+                         "R_hold": r_hold,
                          "entry_px": len(held) / sum(1 / p for p in held) * factor, "entry_time": s["entry_time"],
                          "exit_date": s["step_date"][exit_i], "nights": nights, "partial": partial and not is_hit})
     return rows
