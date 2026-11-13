@@ -91,7 +91,7 @@ LABELS = {"trades": "trades", "win_rate": "win %", "avg_win": "avg win", "avg_lo
 
 
 def build_report(cfg, gappers, feats, trades, synthetic: bool, holdout: pd.DataFrame | None = None,
-                 holdout_runs: int = 0) -> str:
+                 holdout_runs: int = 0, scan_complete: bool = True) -> str:
     be = cfg["split"]["build_end"]
     build = trades[trades["date"] <= be]
     n_build_g = int((gappers["date"] <= be).sum())
@@ -109,7 +109,7 @@ def build_report(cfg, gappers, feats, trades, synthetic: bool, holdout: pd.DataF
     if synthetic:
         parts.append("<div class='banner'>SYNTHETIC DEMO DATA. These numbers come from a fake market used to test the "
                      "software. They say nothing about real stocks.</div>")
-    if "scan_pass" in gappers and set(gappers["scan_pass"]) == {"pass 1"}:
+    if not scan_complete:
         parts.append("<div class='banner'>Partial scan: only stocks that opened 30%+ above the prior close have been "
                      "checked so far (pass 1). Pass 2 adds gappers that fell back before the open; until it finishes, "
                      "results may be slightly too kind to shorting.</div>")

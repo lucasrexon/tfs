@@ -99,6 +99,10 @@ def _stage2_passes(c, cfg, out, cands, then):
         allg = pd.concat(found, ignore_index=True)
         allg.to_parquet(out / "gappers.parquet")
         print(f"  {name}: {len(g):,} gappers ({len(allg):,} total, {getattr(c, 'calls', '?')} API calls)")
+        if name == "pass 2":
+            (out / "scan_complete.json").write_text(json.dumps(
+                {"pass1_candidates": len(tier1), "pass2_candidates": len(tier2), "gappers": len(allg),
+                 "pass2_gappers": len(g)}))
         if then:
             then()
     return allg
@@ -130,7 +134,8 @@ def cmd_report(cfg, synthetic=False, holdout=None, runs=0):
     if holdout is None and (out / "holdout_results.parquet").exists():
         holdout = pd.read_parquet(out / "holdout_results.parquet")
         runs = len(json.loads((out / "holdout_log.json").read_text()))
-    html = build_report(cfg, g, f, t, synthetic, holdout, runs)
+    complete = (out / "scan_complete.json").exists()
+    html = build_report(cfg, g, f, t, synthetic, holdout, runs, scan_complete=complete)
     rp = resolve(cfg, "reports")
     rp.mkdir(exist_ok=True)
     path = rp / ("demo_report.html" if synthetic else "report.html")
