@@ -97,4 +97,4 @@ v2:
     secondary: [same with 1 open, 09:25 short without the going-concern rule]
     excluded: gappers whose next trading day is not in the data yet
     pass_if: average trade positive with t-stat >= 2, typical account result positive, never liquidated
-    run: false
+    run: true                      # ran 2026-11-16: FAILED (avg trade +1.7%, t 0.74); see reports/sealed_result.json

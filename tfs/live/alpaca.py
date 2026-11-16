@@ -57,6 +57,37 @@ class Alpaca:
             "symbol": sym, "qty": str(qty), "side": "sell", "type": "market", "time_in_force": "day",
             "order_class": "oto", "stop_loss": {"stop_price": f"{stop:.2f}"}, "client_order_id": client_id})
 
+    # ---- orders used by the v2 bot (tfs/live/bot_v2.py)
+    def limit_order(self, sym: str, qty: int, side: str, limit: float, client_id: str, extended: bool):
+        """Limit order; extended=True lets it trade before 09:30 / after 16:00 (Alpaca: limit + day only)."""
+        return self._req("POST", f"{self.trade_url}/v2/orders", json={
+            "symbol": sym, "qty": str(qty), "side": side, "type": "limit", "limit_price": f"{limit:.2f}",
+            "time_in_force": "day", "extended_hours": extended, "client_order_id": client_id})
+
+    def exit_oco(self, sym: str, qty: int, target: float, stop: float, client_id: str):
+        """Buy to cover: a take-profit limit and a stop, one cancels the other. Works in regular hours, good till cancelled."""
+        return self._req("POST", f"{self.trade_url}/v2/orders", json={
+            "symbol": sym, "qty": str(qty), "side": "buy", "type": "limit", "time_in_force": "gtc", "order_class": "oco",
+            "take_profit": {"limit_price": f"{target:.2f}"}, "stop_loss": {"stop_price": f"{stop:.2f}"},
+            "client_order_id": client_id})
+
+    def get_order(self, order_id: str): return self._req("GET", f"{self.trade_url}/v2/orders/{order_id}", params={"nested": "true"})
+    def cancel_order(self, order_id: str): return self._req("DELETE", f"{self.trade_url}/v2/orders/{order_id}")
+
+    def filled_orders(self, sym: str, after: str) -> list[dict]:
+        return self._req("GET", f"{self.trade_url}/v2/orders", params={
+            "status": "closed", "symbols": sym, "after": after, "nested": "true", "limit": 100}) or []
+
+    def next_trading_day(self, day: str) -> str:
+        end = (pd.Timestamp(day) + pd.Timedelta(days=10)).strftime("%Y-%m-%d")
+        cal = self._req("GET", f"{self.trade_url}/v2/calendar", params={"start": day, "end": end})
+        later = [c["date"] for c in cal if c["date"] > day]
+        return later[0]
+
+    def last_price(self, sym: str) -> float | None:
+        s = self.snapshots([sym]).get(sym) or {}
+        return (s.get("latestTrade") or {}).get("p")
+
     def close_position(self, sym: str):
         return self._req("DELETE", f"{self.trade_url}/v2/positions/{sym}", params={"cancel_orders": "true"})
 

@@ -122,6 +122,39 @@ At 11:00 it applies the time stop, if the rule uses one. At 15:55 it closes ever
 2. At least 30 trading days of paper trading. Compare the journal with what the backtest says those days should have done.
 3. Only then, if the owner decides to go live, start small.
 
+## Part 3: the v2 bot (the final strategy, paper first)
+
+Research in `tfs/v2/` (no-stop paths, survival sizing, SEC, news, short data, 28 entry types, filters,
+combinations) picked one strategy on the build year. Its rules are in `config.yaml` under `v2.strategy`:
+
+- the 09:25 pre-market price is at least 50% above the previous close, price at least $1, pre-market volume at least 500,000;
+- the company filed a 10-K, 10-Q or 20-F saying "substantial doubt" (a going-concern warning) in the last 456 days;
+- short 2.4% of the account at 09:25 with a pre-market limit order, at most 3 shorts open at once;
+- cover at 20% below the entry, or at a stop at 3x the entry, or else at 15:55 on the next trading day.
+
+**Sealed-year result (run once, 2026-11-16): FAILED the pass rule.** Average trade +1.7% (t-stat 0.74) against
++7.6% in the build year; typical year +13%, bad luck +2%, never liquidated, worst trade 5.9% of the account.
+With 1% more cost per trade than assumed, the typical year falls to +5%; with 3% more it loses 9%.
+Full numbers: `reports/sealed_result.json`.
+
+**Run it in paper mode** (same setup as Part 2), started before 09:20 ET every trading day:
+```bash
+python -m tfs bot2
+```
+Compare its closed trades with the research:
+```bash
+python -m tfs paper
+```
+
+**What is different from the old bot:**
+- It holds shorts overnight on purpose. Live mode needs the owner to set `live.allow_overnight: true` as well as `live.mode: live` and the typed confirmation.
+- The exit order (target and stop together) sits at the broker, but a broker stop only works 09:30-16:00. Outside those hours the bot watches the price itself, so it must be running.
+- Open shorts are saved in `journal/v2_state.json`, so the bot can be stopped and restarted.
+- Alpaca only shorts easy-to-borrow stocks. Most going-concern gappers are hard to borrow, so expect few trades.
+- Not yet checked against Alpaca itself: whether Alpaca accepts a short before 09:30. Paper mode is where that shows up (a `v2_reject` or order error in the journal).
+
+**Suggested rule for the account owner:** paper trade until at least 50 trades have closed. Go live only if the paper average trade is clearly positive after real fees.
+
 ## What is not built yet
 
 - **Plan F** (dilution score from SEC filings) and **Plan S** (Reddit hype). Plan T comes first because nothing else can be measured without it.

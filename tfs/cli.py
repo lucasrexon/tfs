@@ -7,7 +7,9 @@
   python -m tfs run         scan + backtest + report
   python -m tfs holdout     open the sealed test period for config.holdout_rules
   python -m tfs card        live: print this morning's gapper cards
-  python -m tfs bot         live: run the trading bot (paper by default)
+  python -m tfs bot         live: run the old same-day bot (paper by default)
+  python -m tfs bot2        live: run the v2 bot, the final strategy (paper by default)
+  python -m tfs paper       compare the v2 bot's closed trades with the research
 """
 from __future__ import annotations
 
@@ -186,7 +188,7 @@ def demo_config(cfg):
 
 def main(argv=None):
     ap = argparse.ArgumentParser(prog="tfs", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("command", choices=["demo", "download", "scan", "backtest", "report", "run", "holdout", "card", "bot"])
+    ap.add_argument("command", choices=["demo", "download", "scan", "backtest", "report", "run", "holdout", "card", "bot", "bot2", "paper"])
     ap.add_argument("--config", default=None)
     ap.add_argument("--synthetic", action="store_true", help="use the fake market")
     ap.add_argument("--start", help="override data.start (YYYY-MM-DD)")
@@ -222,6 +224,9 @@ def main(argv=None):
         cmd_scan(cfg, syn, then=lambda: (cmd_backtest(cfg, syn), _done(cmd_report(cfg, syn))))
     elif a.command == "holdout":
         cmd_holdout(cfg, syn)
+    elif a.command in ("bot2", "paper"):
+        from tfs.live.bot_v2 import paper_report, run_bot_v2
+        (run_bot_v2 if a.command == "bot2" else paper_report)(cfg)
     elif a.command in ("card", "bot"):
         from tfs.live.bot import run_bot, morning_cards
         (morning_cards if a.command == "card" else run_bot)(cfg)
