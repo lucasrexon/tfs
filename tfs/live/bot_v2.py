@@ -2,9 +2,10 @@
 
 Runs on the ACCOUNT OWNER's computer every trading day, started before 09:20 ET:
 
-  09:20  scan for +40% pre-market gappers; look up each one's going-concern warning on SEC EDGAR
+  09:20  scan for +40% pre-market gappers; look up each one's going-concern warning and industry
+         (SIC code) on SEC EDGAR
   09:25  for gappers now +50% or more (price >= $1, pre-market volume >= 500K) that have the
-         warning and are easy to borrow: short 2.4% of the account with a pre-market limit order,
+         warning, are not in a skipped industry (v2.strategy.skip_industries) and are easy to borrow: short 2.4% of the account with a pre-market limit order,
          at most 3 shorts open at once (random pick if more qualify). The owner types YES per order
          unless auto_approve is on.
          As soon as a short fills: one order that covers at -20% OR at the 3x stop (broker-side).
@@ -73,6 +74,20 @@ class GoingConcern:
         self._memo[(sym, day)] = out
         return out
 
+    def industry(self, sym: str) -> str | None:
+        """The same 9 groups as the research (tfs.sec.industry), from the SEC's SIC code and company name."""
+        from tfs.sec import industry
+        if sym in self._memo:
+            return self._memo[sym]
+        try:
+            cik = self.cik(sym)
+            j = self.ed._get(f"https://data.sec.gov/submissions/CIK{cik}.json") if cik else None
+            out = industry(j.get("sic"), j.get("name", "")) if j else None
+        except Exception:
+            out = None
+        self._memo[sym] = out
+        return out
+
 
 # ---------------------------------------------------------------- the bot
 class BotV2:
@@ -117,9 +132,11 @@ class BotV2:
                     self.cands[sym] = {"prev_close": float(prev), "asset": assets[sym]}
             except (KeyError, TypeError, ZeroDivisionError):
                 continue
+        skip = set(self.st.get("skip_industries") or [])
         for sym, c in self.cands.items():
             c["going_concern"] = self.gc(sym, today)
-            self.j.log("v2_candidate", sym, prev_close=c["prev_close"], going_concern=c["going_concern"])
+            c["industry"] = self.gc.industry(sym) if (skip and hasattr(self.gc, "industry")) else None
+            self.j.log("v2_candidate", sym, prev_close=c["prev_close"], going_concern=c["going_concern"], industry=c["industry"])
         self.j.log("v2_prescan_done", candidates=len(self.cands))
 
     # ------------------------------------------------------------ 09:25 entries
@@ -141,6 +158,10 @@ class BotV2:
                 why = "premarket_volume_low"
             elif self.st["require_going_concern"] and c["going_concern"] is not True:
                 why = "no_going_concern" if c["going_concern"] is False else "going_concern_unknown"
+            elif self.st.get("skip_industries") and c.get("industry") in self.st["skip_industries"]:
+                why = "skipped_industry"
+            elif self.st.get("skip_industries") and c.get("industry") is None:
+                why = "industry_unknown"
             elif sym in self.pos:
                 why = "already_in_position"
             if why:

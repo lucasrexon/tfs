@@ -74,7 +74,10 @@ def make(tmp_path, stocks, gc, when="2025-03-03 09:20", state=None, auto=True):
     sf = tmp_path / "state.json"
     if state:
         sf.write_text(json.dumps(state))
-    bot = BotV2(cfg, b, Journal(tmp_path / "j.csv"), lambda s, d: gc.get(s), sf, now_fn=lambda: clock[0], rng=random.Random(1))
+    class GC:
+        def __call__(self, s, d): return gc.get(s)
+        def industry(self, s): return INDUSTRY.get(s, "tech")
+    bot = BotV2(cfg, b, Journal(tmp_path / "j.csv"), GC(), sf, now_fn=lambda: clock[0], rng=random.Random(1))
     return bot, b, clock
 
 
@@ -86,6 +89,7 @@ def events(tmp_path, kind):
 STOCKS = {"AAA": {"prev": 2.0, "gap": 0.8}, "BBB": {"prev": 3.0, "gap": 0.6}, "CCC": {"prev": 1.5, "gap": 0.7},
           "NOGC": {"prev": 2.0, "gap": 0.9}, "SMALL": {"prev": 2.0, "gap": 0.45}, "HTB": {"prev": 2.0, "gap": 0.9, "etb": False},
           "FLAT": {"prev": 2.0, "gap": 0.1}}
+INDUSTRY = {"SHOP": "consumer"}
 GC = {"AAA": True, "BBB": True, "CCC": True, "NOGC": False, "SMALL": True, "HTB": True, "FLAT": True}
 OPEN_OLD = {"OLD": {"status": "open", "qty": 10, "entry_px": 5.0, "target": 4.0, "stop": 15.0, "entry_date": "2025-02-28",
                     "exit_date": "2025-03-03", "exit_order": "xold"}}
@@ -197,3 +201,23 @@ def test_going_concern_lookup():
             return {"hits": {"total": {"value": 2 if params["ciks"] == "0000000123" else 0}}}
     gc = GoingConcern(Ed())
     assert gc("AAA", "2025-03-03") is True and gc("BBB", "2025-03-03") is False and gc("ZZZ", "2025-03-03") is None
+
+
+def test_skipped_industry_is_not_traded(tmp_path):
+    stocks = {"AAA": STOCKS["AAA"], "SHOP": {"prev": 2.0, "gap": 0.9}}
+    bot, b, clock = make(tmp_path, stocks, {"AAA": True, "SHOP": True})
+    bot.prescan()
+    clock[0] = pd.Timestamp("2025-03-03 09:25:10", tz=NY).to_pydatetime()
+    bot.enter()
+    assert [o["symbol"] for o in b.orders] == ["AAA"]
+    assert dict(events(tmp_path, "v2_skip"))["SHOP"]["reason"] == "skipped_industry"
+
+
+def test_industry_lookup_uses_the_research_groups():
+    class Ed:
+        def _get(self, url, params=None):
+            if url.endswith("company_tickers.json"):
+                return {"0": {"ticker": "EDU", "cik_str": 7}}
+            assert url.endswith("CIK0000000007.json")
+            return {"sic": "8200", "name": "Some Education Group"}
+    assert GoingConcern(Ed()).industry("EDU") == "other"

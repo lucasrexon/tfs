@@ -92,6 +92,11 @@ v2:
     disaster_stop_x: 3.0           # stop at 3x the entry price; a gap or halt can fill above it
     position_pct: 0.024            # each short is 2.4% of the account
     max_open: 3                    # at most 3 shorts open at once; if more qualify, pick at random
+    skip_industries: [consumer, other]   # added 2026-11-16 after the sealed test, from tfs.v2.patterns: the only filter
+                                   # that raised return AND lowered risk on the year it was not learned from (both ways).
+                                   # consumer = food, drinks, retail, restaurants, entertainment;
+                                   # other = business services, education, consulting, advertising, staffing, etc.
+                                   # NOT yet tested on fresh data. Set to [] to trade exactly what the sealed test ran.
   sealed_test:
     primary: gc_0925_short, up to 3 open
     secondary: [same with 1 open, 09:25 short without the going-concern rule]

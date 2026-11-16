@@ -1,0 +1,314 @@
+<title>Gapper News Patterns</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@600;700&family=Source+Sans+3:wght@400;600&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: one research-notebook column; verdict first, then evidence, then the full trade ledger. */
+:root{
+  --bg:#f5f6f8; --surface:#fcfcfd; --ink:#101418; --ink-2:#4a5360; --muted:#6f7884; --line:#dfe3e8; --line-2:#c7cdd4;
+  --accent:#1c5cab; --accent-wash:#e6eefa; --good:#006300; --bad:#b3261e; --s-build:#6da7ec; --s-test:#184f95;
+  --display:"Archivo","Helvetica Neue",Arial,sans-serif; --body:"Source Sans 3","Segoe UI",system-ui,sans-serif;
+  --mono:"JetBrains Mono",ui-monospace,"SFMono-Regular",Menlo,monospace;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#111417; --surface:#181c20; --ink:#eef1f4; --ink-2:#c0c7d0; --muted:#8f97a1; --line:#2a3037; --line-2:#3a424b;
+  --accent:#5598e7; --accent-wash:#1b2a3d; --good:#0ca30c; --bad:#e66767; --s-build:#5598e7; --s-test:#9ec5f4; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#111417; --surface:#181c20; --ink:#eef1f4; --ink-2:#c0c7d0; --muted:#8f97a1; --line:#2a3037; --line-2:#3a424b;
+  --accent:#5598e7; --accent-wash:#1b2a3d; --good:#0ca30c; --bad:#e66767; --s-build:#5598e7; --s-test:#9ec5f4; color-scheme:dark}
+body{background:var(--bg);color:var(--ink);font:16px/1.55 var(--body)}
+.wrap{max-width:960px;margin:0 auto;padding-block:32px 64px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));display:grid;gap:40px}
+h1,h2,h3{font-family:var(--display);text-wrap:balance;margin:0;letter-spacing:-.01em}
+h1{font-size:clamp(28px,5vw,40px);line-height:1.1}
+h2{font-size:24px;line-height:1.2}
+h3{font-size:17px}
+p{margin:0;max-width:68ch}
+.eyebrow{font:600 12px/1 var(--body);letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+section{display:grid;gap:16px;min-width:0}
+.lede{font-size:18px;color:var(--ink-2)}
+.num{font-family:var(--mono);font-variant-numeric:tabular-nums}
+.verdict{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:20px;display:grid;gap:12px}
+.verdict ul{margin:0;padding-left:20px;display:grid;gap:6px;max-width:72ch}
+.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px}
+.tile{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:14px 16px;display:grid;gap:4px;min-width:0}
+.tile .k{font-size:13px;color:var(--ink-2)}
+.tile .v{font:500 24px/1.2 var(--mono)}
+.tile .from{font-size:13px;color:var(--muted)}
+.up{color:var(--good)} .down{color:var(--bad)}
+.chip{display:inline-block;font:600 11px/1 var(--body);letter-spacing:.05em;text-transform:uppercase;padding:4px 7px;border-radius:4px;white-space:nowrap;vertical-align:middle}
+.sig-strong{background:var(--ink);color:var(--surface)}
+.sig-moderate{background:var(--accent);color:#fff}
+.sig-weak{border:1px solid var(--accent);color:var(--accent)}
+.sig-unreliable{border:1px dashed var(--line-2);color:var(--muted)}
+.sig-toofew{color:var(--muted);border:1px solid transparent}
+.legend-sig{display:grid;grid-template-columns:auto 1fr;gap:8px 12px;align-items:baseline;font-size:15px;max-width:72ch}
+.tabs{display:flex;flex-wrap:wrap;gap:6px}
+.tabs button{font:600 14px var(--body);border:1px solid var(--line-2);background:var(--surface);color:var(--ink);padding:7px 12px;border-radius:999px;cursor:pointer}
+.tabs button[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:#fff}
+.tabs button:focus-visible,select:focus-visible,input:focus-visible,.more:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.scroll{overflow-x:auto;border:1px solid var(--line);border-radius:10px;background:var(--surface)}
+table{border-collapse:collapse;width:100%;font-size:14px}
+th,td{padding:8px 10px;text-align:left;border-bottom:1px solid var(--line);vertical-align:top}
+th{font:600 12px var(--body);letter-spacing:.04em;text-transform:uppercase;color:var(--muted);background:var(--surface);position:sticky;top:0}
+td.r,th.r{text-align:right}
+tr:last-child td{border-bottom:0}
+.dim-note{font-size:14px;color:var(--muted)}
+/* dumbbell */
+.chart{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:16px;display:grid;gap:10px;min-width:0;position:relative}
+.chart-head{display:flex;flex-wrap:wrap;justify-content:space-between;gap:8px;align-items:baseline}
+.key{display:flex;gap:16px;font-size:13px;color:var(--ink-2)}
+.key i{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:6px;vertical-align:-1px}
+.rows{display:grid;gap:2px}
+.row{display:grid;grid-template-columns:minmax(120px,38%) 1fr;gap:12px;align-items:center;padding:4px 0;border-radius:6px}
+.row:hover,.row:focus-within{background:var(--accent-wash)}
+.row .lab{font-size:14px;line-height:1.25;min-width:0}
+.row .lab .n{color:var(--muted);font-size:12px}
+.track{position:relative;height:28px}
+.track .grid{position:absolute;top:0;bottom:0;width:1px;background:var(--line)}
+.track .zero{position:absolute;top:0;bottom:0;width:1px;background:var(--line-2)}
+.track .bar{position:absolute;top:13px;height:2px;background:var(--line-2)}
+.track .dot{position:absolute;top:8px;width:12px;height:12px;margin-left:-6px;border-radius:50%;border:2px solid var(--surface);box-sizing:border-box}
+.axis{display:grid;grid-template-columns:minmax(120px,38%) 1fr;gap:12px}
+.axis .ticks{position:relative;height:18px;font:12px var(--mono);color:var(--muted)}
+.axis .ticks span{position:absolute;transform:translateX(-50%);white-space:nowrap}
+.tip{position:absolute;pointer-events:none;background:var(--ink);color:var(--surface);font-size:13px;line-height:1.4;padding:8px 10px;border-radius:6px;max-width:280px;z-index:5}
+/* ledger */
+.controls{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.controls select,.controls input{font:15px var(--body);padding:7px 9px;border:1px solid var(--line-2);border-radius:6px;background:var(--surface);color:var(--ink);min-width:0;max-width:100%}
+.controls input{flex:1 1 200px}
+.hl{display:block;font-size:13px;color:var(--ink-2);max-width:46ch}
+.more{font:600 14px var(--body);border:1px solid var(--line-2);background:var(--surface);color:var(--ink);padding:8px 14px;border-radius:6px;cursor:pointer;justify-self:start}
+.small{font-size:14px;color:var(--ink-2)}
+code{font-family:var(--mono);font-size:.9em}
+@media (prefers-reduced-motion:no-preference){.row{transition:background .12s}}
+@media (max-width:520px){.row,.axis{grid-template-columns:1fr}.axis .spacer{display:none}.row .track{margin-bottom:6px}}
+</style>
+
+<div class="wrap">
+  <header style="display:grid;gap:12px">
+    <div class="eyebrow">TFS research · 09:25 short on +50% gappers · Nov 2024 to Nov 2026</div>
+    <h1>What news and industry say about each short</h1>
+    <p class="lede" id="lede"></p>
+  </header>
+
+  <section>
+    <div class="verdict">
+      <h2>Verdict</h2>
+      <ul id="verdict"></ul>
+    </div>
+    <div class="eyebrow">The one filter that passed: test year, with and without it</div>
+    <div class="tiles" id="tiles"></div>
+    <p class="small">2.4% of the account per short, at most 3 open, cover at −20% or the next day's close, stop at 3× the entry. "Typical" is the middle of 300 simulated years with a random pick among same-day gappers; "bad luck" is the 5th worst in 100.</p>
+  </section>
+
+  <section>
+    <div class="eyebrow">Method</div>
+    <h2>How each trade's news was found</h2>
+    <p>Every gapper was matched with Massive news headlines (Benzinga and GlobeNewswire) and with the company's own press releases filed on SEC EDGAR as 8-K or 6-K exhibits. Each item was dated: <b>by 9:25</b> (the bot can use it), <b>the 4 days before</b>, or <b>later that day</b> (it explains the gap but came too late for this bot). Keyword rules read each release's headline first and sort it into one of 15 types. Whether the company was being bought out or doing the buying was decided by matching the company's own name in the headline.</p>
+    <p id="coverage"></p>
+  </section>
+
+  <section>
+    <div class="eyebrow">Patterns</div>
+    <h2>Every group, labelled by how much to trust it</h2>
+    <div class="legend-sig">
+      <span class="chip sig-strong">strong</span><span>Survives the correction for testing about 60 groups at once (q below 0.05) and points the same way in both years. <b>No group reached this.</b></span>
+      <span class="chip sig-moderate">moderate</span><span>Less than a 5% chance of a gap this big between the group and the rest by luck alone (p below 0.05), and the same direction in both years.</span>
+      <span class="chip sig-weak">weak</span><span>Same direction in both years, but could easily be luck.</span>
+      <span class="chip sig-unreliable">unreliable</span><span>Better in one year and worse in the other.</span>
+      <span class="chip sig-toofew">too few</span><span>Under 15 trades, or under 5 in one of the years.</span>
+    </div>
+    <div class="tabs" id="tabs" role="group" aria-label="Pick a grouping"></div>
+    <div class="chart" id="chart">
+      <div class="chart-head">
+        <h3 id="chart-title"></h3>
+        <div class="key"><span><i style="background:var(--s-build)"></i>Build year (Nov 2024 – Nov 2025)</span><span><i style="background:var(--s-test)"></i>Test year (Nov 2025 – Nov 2026)</span></div>
+      </div>
+      <p class="dim-note">Average result per trade, as a share of the position, after costs. Right of the zero line, the short made money on average. Groups with fewer than 5 trades in a year are left off the chart but stay in the table.</p>
+      <div class="axis"><span class="spacer"></span><div class="ticks" id="ticks-top"></div></div>
+      <div class="rows" id="rows"></div>
+      <div class="tip" id="tip" hidden></div>
+    </div>
+    <div class="scroll"><table id="gtable"></table></div>
+    <div id="readout" class="verdict"></div>
+  </section>
+
+  <section>
+    <div class="eyebrow">Filters</div>
+    <h2>Which skip rules hold up on a year they did not see</h2>
+    <p>Each rule looks at one year and skips every group whose trades lost money on average there ("avg below zero"), or only groups clearly worse than the rest ("clearly worse"). Then it is scored on the other year, and again the other way round. A rule passes only if it raised the typical year <b>and</b> improved both bad luck and the worst drop, in both directions.</p>
+    <div class="tabs" id="ftabs" role="group" aria-label="Pick a starting point"></div>
+    <div class="scroll"><table id="ftable"></table></div>
+  </section>
+
+  <section>
+    <div class="eyebrow">Ledger</div>
+    <h2>All trades and their news</h2>
+    <div class="controls">
+      <label class="small" for="f-year">Year</label>
+      <select id="f-year"><option value="">Both</option><option value="build">Build year</option><option value="test">Test year</option></select>
+      <label class="small" for="f-ind">Industry</label><select id="f-ind"><option value="">All</option></select>
+      <label class="small" for="f-news">News by 9:25</label><select id="f-news"><option value="">All</option></select>
+      <label class="small" for="f-gc">Warning</label>
+      <select id="f-gc"><option value="">All</option><option value="1">Going-concern warning</option><option value="0">No warning</option></select>
+      <label class="small" for="f-sort">Sort</label>
+      <select id="f-sort"><option value="date">Newest first</option><option value="worst">Worst result first</option><option value="best">Best result first</option></select>
+      <input id="f-q" type="search" placeholder="Search ticker, company or headline" aria-label="Search">
+    </div>
+    <p class="small" id="ledger-sum"></p>
+    <div class="scroll"><table id="ttable"></table></div>
+    <button class="more" id="more" type="button">Show 60 more</button>
+  </section>
+
+  <footer class="small">Research software, not financial advice. A short can lose more than the position. Data: Massive (prices, news), SEC EDGAR (filings). Code: <code>tfs/v2/news2.py</code>, <code>tfs/v2/patterns.py</code>.</footer>
+</div>
+
+<script>
+const D = /*__DATA__*/null;
+const pct = (v, d=1) => v == null ? "–" : (v >= 0 ? "+" : "−") + Math.abs(v * 100).toFixed(d) + "%";
+const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const chip = s => `<span class="chip sig-${s.replace(" ", "")}">${s}</span>`;
+const F = D.final, T = F.test, B = F.build;
+
+// ---- header and verdict
+const cov = D.coverage;
+document.getElementById("lede").textContent =
+  `${cov.trades.toLocaleString()} trades over two years: ${cov.build} in the build year and ${cov.test} in the test year. ` +
+  `Each was checked against its news and its industry to see which kinds of gapper the 9:25 short works on.`;
+const mods = D.groups.filter(g => g.sig === "moderate" && !g.dim.includes("not tradable"));
+document.getElementById("verdict").innerHTML = [
+  `<li><b>No pattern is strong.</b> After allowing for the number of groups tested, none clears the bar. ${mods.length} groups are moderate: a real-looking difference that held in both years.</li>`,
+  `<li><b>Best shorts:</b> FDA / regulatory news (${pct(D.groups.find(g=>g.dim.startsWith("news type (known")&&g.key==="fda_regulatory").avg)} a trade) and financing deals (${pct(D.groups.find(g=>g.dim.startsWith("news type (known")&&g.key==="financing").avg)}), both moderate and good in both years. Medical devices and health services also did well.</li>`,
+  `<li><b>Worst shorts:</b> companies being bought out. Their price sticks near the buyout price, so only ${pct(D.groups.find(g=>g.dim.startsWith("news type (known")&&g.key==="being_acquired").win,0).slice(1)} of them fell enough to win. Gappers with no going-concern warning made nothing on average in either year.</li>`,
+  `<li><b>News-type filters failed.</b> Skipping news types that lost money in one year made the other year worse, both ways round. The news groups are too small to trade on yet.</li>`,
+  `<li><b>One filter passed:</b> skipping industries whose trades lost money on average in the year it learned from. Learned on both years, it skips <b>consumer</b> companies (food, drinks, retail, restaurants, leisure) and <b>other services</b> (business services, education, consulting, advertising, staffing). It is now in the bot's config.</li>`,
+  `<li><b>Still a weak edge.</b> Even with the filter, the test year's average trade is ${pct(T.filtered.avg_trade)}: not distinguishable from luck (t-stat ${T.filtered.t.toFixed(2)}; 2 or more would be). Keep paper trading.</li>`
+].join("");
+const tiles = [
+  ["Typical year", T.base.typical_yr, T.filtered.typical_yr, true],
+  ["Bad-luck year", T.base.bad_luck_yr, T.filtered.bad_luck_yr, true],
+  ["Typical worst drop", T.base.worst_drop, T.filtered.worst_drop, true],
+  ["Typical year with 1% more cost a trade", T.base_cost1.typical_yr, T.filtered_cost1.typical_yr, true],
+];
+document.getElementById("tiles").innerHTML = tiles.map(([k, a, b]) =>
+  `<div class="tile"><span class="k">${k}</span><span class="v num ${b > a ? "up" : "down"}">${pct(b)}</span><span class="from">without the filter: <span class="num">${pct(a)}</span></span></div>`).join("");
+document.getElementById("coverage").innerHTML =
+  `Of the ${cov.trades.toLocaleString()} trades, <b>${cov.news_0925}</b> (${pct(cov.news_0925/cov.trades,0).slice(1)}) had news the bot could have seen by 9:25, and <b>${cov.news_any}</b> (${pct(cov.news_any/cov.trades,0).slice(1)}) had news once the 4 days before and later that day are included. The rest moved with no news in either source; a paid real-time feed would probably find more.`;
+
+// ---- pattern explorer
+const DIMS = [["news type (known by 09:25)", "News type by 9:25"], ["industry", "Industry"], ["industry + news type", "Industry + news type"],
+  ["going-concern warning", "Going-concern warning"], ["news timing", "News timing"], ["news source", "News source"],
+  ["any news by 09:25", "Any news"], ["older news", "Older news"], ["news type (incl. later that day, not tradable)", "News incl. later that day"]];
+const READ = {
+  "news type (known by 09:25)": "FDA / regulatory news and financing deals were the best shorts in both years. Being bought out was the worst: the buyout price acts as a floor, so the stock rarely falls 20%. Most other news types flip between the years.",
+  "industry": "Medical devices and health services did well in both years. Consumer companies and other services lost a little in both years; skipping them is the one filter that held up on unseen data. Crypto lost big in the build year but not in the test year, so it is unreliable.",
+  "industry + news type": "Only groups with enough trades are shown. Biotech with FDA news was good in both years; biotech being bought out was poor. Most combinations are too small to judge.",
+  "going-concern warning": "The current strategy only shorts companies with a going-concern warning. Those without one made about nothing in both years, which is why the rule is there.",
+  "news timing": "News overnight or early in the pre-market did a little better than news after 8:00, but none of it is more than weak.",
+  "news source": "Whether the news came from an SEC filing or a news site makes no reliable difference.",
+  "any news by 09:25": "Having some news, or none, makes no reliable difference on its own.",
+  "older news": "News in the 4 days before the gap makes no difference.",
+  "news type (incl. later that day, not tradable)": "Including news that came out after 9:25 gives the same picture with more trades. A faster news feed would not change the conclusions."
+};
+let dim = DIMS[0][0];
+const tabs = document.getElementById("tabs");
+tabs.innerHTML = DIMS.map(([k, l]) => `<button type="button" data-k="${esc(k)}" aria-pressed="${k === dim}">${l}</button>`).join("");
+tabs.addEventListener("click", e => { const b = e.target.closest("button"); if (!b) return; dim = b.dataset.k;
+  tabs.querySelectorAll("button").forEach(x => x.setAttribute("aria-pressed", x === b)); drawPatterns(); });
+const ORDER = {strong: 0, moderate: 1, weak: 2, unreliable: 3, "too few": 4};
+
+function niceTicks(lo, hi) {
+  const span = hi - lo, raw = span / 5, mag = Math.pow(10, Math.floor(Math.log10(raw)));
+  const step = [1, 2, 2.5, 5, 10].map(m => m * mag).find(s => span / s <= 6);
+  const out = []; for (let v = Math.ceil(lo / step) * step; v <= hi + 1e-9; v += step) out.push(+v.toFixed(6)); return out;
+}
+function drawPatterns() {
+  const all = D.groups.filter(g => g.dim === dim).sort((a, b) => ORDER[a.sig] - ORDER[b.sig] || (b.avg - a.avg));
+  const shown = all.filter(g => g.nb >= 5 && g.nt >= 5 && (dim !== "industry + news type" || g.sig !== "too few"));
+  document.getElementById("chart-title").textContent = DIMS.find(d => d[0] === dim)[1] + ": average trade in each year";
+  const vals = shown.flatMap(g => [g.b, g.t]).filter(v => v != null);
+  let lo = Math.min(0, ...vals), hi = Math.max(0, ...vals); const pad = (hi - lo) * 0.08 || 0.02; lo -= pad; hi += pad;
+  const ticks = niceTicks(lo, hi); lo = Math.min(lo, ticks[0]); hi = Math.max(hi, ticks[ticks.length - 1]);
+  const x = v => ((v - lo) / (hi - lo) * 100).toFixed(2) + "%";
+  document.getElementById("ticks-top").innerHTML = ticks.map(t => `<span style="left:${x(t)}">${pct(t, 0).replace("+0%", "0%").replace("−0%", "0%")}</span>`).join("");
+  const grid = ticks.map(t => `<span class="${t === 0 ? "zero" : "grid"}" style="left:${x(t)}"></span>`).join("");
+  document.getElementById("rows").innerHTML = shown.map((g, i) => {
+    const a = Math.min(g.b, g.t), b = Math.max(g.b, g.t);
+    return `<div class="row" tabindex="0" data-i="${i}">
+      <div class="lab">${esc(g.name)} ${chip(g.sig)}<br><span class="n num">${g.nb} + ${g.nt} trades</span></div>
+      <div class="track">${grid}<span class="bar" style="left:${x(a)};width:calc(${x(b)} - ${x(a)})"></span>
+        <span class="dot" style="left:${x(g.b)};background:var(--s-build)"></span><span class="dot" style="left:${x(g.t)};background:var(--s-test)"></span></div></div>`;
+  }).join("") || `<p class="dim-note">No group in this view has at least 5 trades in each year.</p>`;
+  const tip = document.getElementById("tip"), chart = document.getElementById("chart");
+  document.querySelectorAll("#rows .row").forEach(el => {
+    const g = shown[+el.dataset.i];
+    const show = () => { tip.hidden = false;
+      tip.innerHTML = `<b>${esc(g.name)}</b><br>Build year: ${pct(g.b)} a trade (${g.nb} trades)<br>Test year: ${pct(g.t)} a trade (${g.nt} trades)<br>All other trades: ${pct(g.rest)} · win rate ${pct(g.win,0).slice(1)}`;
+      const r = el.getBoundingClientRect(), c = chart.getBoundingClientRect();
+      tip.style.top = (r.bottom - c.top + 4) + "px"; tip.style.left = Math.max(8, Math.min(c.width - 290, r.left - c.left + r.width * 0.4)) + "px"; };
+    el.addEventListener("mouseenter", show); el.addEventListener("focus", show);
+    el.addEventListener("mouseleave", () => tip.hidden = true); el.addEventListener("blur", () => tip.hidden = true);
+  });
+  document.getElementById("gtable").innerHTML = `<thead><tr><th>Group</th><th>Trust</th><th class="r">Trades</th><th class="r">Avg trade</th><th class="r">All others</th>
+    <th class="r">Build year</th><th class="r">Test year</th><th class="r">Win rate</th><th class="r">Lost half+</th><th class="r">p</th></tr></thead><tbody>` +
+    all.map(g => `<tr><td>${esc(g.name)}</td><td>${chip(g.sig)}</td><td class="r num">${g.n}</td><td class="r num">${pct(g.avg)}</td><td class="r num">${pct(g.rest)}</td>
+      <td class="r num">${pct(g.b)}</td><td class="r num">${pct(g.t)}</td><td class="r num">${pct(g.win,0).slice(1)}</td><td class="r num">${pct(g.big,1).slice(1)}</td>
+      <td class="r num">${g.p == null ? "–" : g.p < 0.001 ? "<0.001" : g.p.toFixed(3)}</td></tr>`).join("") + "</tbody>";
+  document.getElementById("readout").innerHTML = `<h3>What this shows</h3><p>${READ[dim]}</p>`;
+}
+drawPatterns();
+
+// ---- filters
+const BASES = [...new Set(D.filters.map(f => f.base))];
+let base = BASES[0];
+const ftabs = document.getElementById("ftabs");
+ftabs.innerHTML = BASES.map(b => `<button type="button" aria-pressed="${b === base}">${b === "all 50%+ gappers" ? "Start from all +50% gappers" : "Start from the current strategy (going-concern only)"}</button>`).join("");
+ftabs.addEventListener("click", e => { const b = e.target.closest("button"); if (!b) return; base = BASES[[...ftabs.children].indexOf(b)];
+  [...ftabs.children].forEach(x => x.setAttribute("aria-pressed", x === b)); drawFilters(); });
+function drawFilters() {
+  const rows = D.filters.filter(f => f.base === base);
+  const ref = {}; rows.filter(f => f.filter === "none").forEach(f => ref[f.score] = f);
+  const names = [...new Set(rows.map(f => f.filter))];
+  const pass = n => { if (n === "none") return null; const r = rows.filter(f => f.filter === n);
+    return r.every(f => f.typ > ref[f.score].typ && f.bad >= ref[f.score].bad && f.dd >= ref[f.score].dd); };
+  const lab = {build: "build year", test: "test year"};
+  document.getElementById("ftable").innerHTML = `<thead><tr><th>Rule</th><th>Learned on → scored on</th><th>Skipped</th><th class="r">Trades</th><th class="r">Typical year</th><th class="r">Bad luck</th><th class="r">Worst drop</th><th>Passed</th></tr></thead><tbody>` +
+    names.flatMap(n => rows.filter(f => f.filter === n).map((f, j) => {
+      const r0 = ref[f.score], cls = (a, b) => n === "none" ? "" : (a > b ? "up" : a < b ? "down" : "");
+      const ok = pass(n);
+      return `<tr><td>${j ? "" : esc(n === "none" ? "No filter (baseline)" : n.replace("skip ", "Skip ").replace(" groups:", " groups that"))}</td>
+        <td>${lab[f.learn]} → ${lab[f.score]}</td><td class="small">${esc(f.skipped === "-" ? "" : f.skipped.replace(/news_0925/g, "news").replace(/news_timing/g, "timing").replace(/news_source/g, "source").replace(/[\[\]']/g, ""))}</td>
+        <td class="r num">${f.trades}</td><td class="r num ${cls(f.typ, r0.typ)}">${pct(f.typ)}</td><td class="r num ${cls(f.bad, r0.bad)}">${pct(f.bad)}</td>
+        <td class="r num ${cls(f.dd, r0.dd)}">${pct(f.dd)}</td><td>${j || ok === null ? "" : ok ? '<span class="chip sig-moderate">passed</span>' : '<span class="chip sig-unreliable">failed</span>'}</td></tr>`;
+    })).join("") + "</tbody>";
+}
+drawFilters();
+
+// ---- ledger  [year,date,ticker,name,industry,gc,news,timing,headline,newsLater,headlineLater,gap,ret,hit,stopped]
+const TR = D.trades;
+const fill = (id, vals) => document.getElementById(id).insertAdjacentHTML("beforeend", vals.map(v => `<option>${esc(v)}</option>`).join(""));
+fill("f-ind", [...new Set(TR.map(t => t[4]).filter(Boolean))].sort());
+fill("f-news", [...new Set(TR.map(t => t[6]))].sort());
+let limit = 60;
+const ids = ["f-year", "f-ind", "f-news", "f-gc", "f-sort", "f-q"];
+ids.forEach(id => document.getElementById(id).addEventListener("input", () => { limit = 60; drawLedger(); }));
+document.getElementById("more").addEventListener("click", () => { limit += 60; drawLedger(); });
+function drawLedger() {
+  const [yr, ind, nw, gc, sort, q] = ids.map(id => document.getElementById(id).value);
+  const qq = q.trim().toLowerCase();
+  let rows = TR.filter(t => (!yr || t[0] === yr) && (!ind || t[4] === ind) && (!nw || t[6] === nw) && (gc === "" || String(t[5]) === gc) &&
+    (!qq || (t[2] + " " + t[3] + " " + t[8] + " " + t[10]).toLowerCase().includes(qq)));
+  rows.sort(sort === "date" ? (a, b) => b[1].localeCompare(a[1]) : sort === "worst" ? (a, b) => a[12] - b[12] : (a, b) => b[12] - a[12]);
+  const avg = rows.length ? rows.reduce((s, t) => s + t[12], 0) / rows.length : null;
+  document.getElementById("ledger-sum").innerHTML = `<b>${rows.length.toLocaleString()}</b> trades match · average result <span class="num">${pct(avg)}</span> a trade · won <span class="num">${rows.length ? pct(rows.filter(t => t[12] > 0).length / rows.length, 0).slice(1) : "–"}</span>`;
+  document.getElementById("ttable").innerHTML = `<thead><tr><th>Date</th><th>Ticker</th><th>Company · industry</th><th>News by 9:25</th><th>Later that day</th><th class="r">Gap</th><th class="r">Result</th><th>How it ended</th></tr></thead><tbody>` +
+    rows.slice(0, limit).map(t => `<tr><td class="num">${t[1]}</td><td class="num"><b>${esc(t[2])}</b></td>
+      <td>${esc(t[3])}<span class="hl">${esc(t[4])}${t[5] ? " · going-concern warning" : ""}</span></td>
+      <td>${esc(t[6])}${t[8] ? `<span class="hl">${esc(t[8])}</span>` : ""}</td>
+      <td>${t[9] !== t[6] ? esc(t[9]) : ""}${t[10] && t[9] !== t[6] ? `<span class="hl">${esc(t[10])}</span>` : ""}</td>
+      <td class="r num">${pct(t[11], 0)}</td><td class="r num ${t[12] > 0 ? "up" : "down"}">${pct(t[12])}</td>
+      <td class="small">${t[13] ? "hit −20% target" : t[14] ? "stopped at 3×" : "covered next day"}</td></tr>`).join("") + "</tbody>";
+  document.getElementById("more").hidden = rows.length <= limit;
+}
+drawLedger();
+</script>
