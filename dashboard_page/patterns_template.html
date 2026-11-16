@@ -87,7 +87,7 @@ code{font-family:var(--mono);font-size:.9em}
 <div class="wrap">
   <header style="display:grid;gap:12px">
     <div class="eyebrow">TFS research · 09:25 short on +50% gappers · Nov 2024 to Nov 2026</div>
-    <h1>What news and industry say about each short</h1>
+    <h1>What news, industry and 14 other factors say about each short</h1>
     <p class="lede" id="lede"></p>
   </header>
 
@@ -183,7 +183,7 @@ code{font-family:var(--mono);font-size:.9em}
     <button class="more" id="more" type="button">Show 60 more</button>
   </section>
 
-  <footer class="small">Research software, not financial advice. A short can lose more than the position. Data: Massive (prices, news), SEC EDGAR (filings). Code: <code>tfs/v2/news2.py</code>, <code>tfs/v2/patterns.py</code>.</footer>
+  <footer class="small">Research software, not financial advice. A short can lose more than the position. Data: Massive (prices, news), SEC EDGAR (filings). Code: <code>tfs/v2/news2.py</code>, <code>tfs/v2/patterns.py</code>, <code>tfs/v2/factors.py</code>.</footer>
 </div>
 
 <script>
@@ -205,6 +205,7 @@ document.getElementById("verdict").innerHTML = [
   `<li><b>Worst shorts:</b> companies being bought out. Their price sticks near the buyout price, so only ${pct(D.groups.find(g=>g.dim.startsWith("news type (known")&&g.key==="being_acquired").win,0).slice(1)} of them fell enough to win. Gappers with no going-concern warning made nothing on average in either year.</li>`,
   `<li><b>News-type filters failed.</b> Skipping news types that lost money in one year made the other year worse, both ways round. The news groups are too small to trade on yet.</li>`,
   `<li><b>One filter passed:</b> skipping industries whose trades lost money on average in the year it learned from. Learned on both years, it skips <b>consumer</b> companies (food, drinks, retail, restaurants, leisure) and <b>other services</b> (business services, education, consulting, advertising, staffing). It is now in the bot's config.</li>`,
+  `<li><b>14 more factors tested, none passed.</b> Dilution, balance sheet, listing, technical, sector and news-sentiment factors are in the Factors section below. Three look promising in both years but are not strong enough yet.</li>`,
   `<li><b>Still a weak edge.</b> Even with the filter, the test year's average trade is ${pct(T.filtered.avg_trade)}: not distinguishable from luck (t-stat ${T.filtered.t.toFixed(2)}; 2 or more would be). Keep paper trading.</li>`
 ].join("");
 const tiles = [
@@ -318,17 +319,17 @@ drawFilters();
 // ---- factors: written after reading the results
 const FXV = [
   `<b>None of the 14 factors passed.</b> Every skip rule either found nothing to skip or made the year it had not seen worse. The bot's rules stay as they are.`,
-  `<b>Two moderate leads, both too small to trade on yet.</b> When the gap itself pushed the price above the company's warrant exercise price, the short made ${pct(0.134)} a trade against ${pct(0.064)} for the rest, but that is only 27 + 5 trades. Companies whose revenue shrank the most did better in both years (${pct(0.111)} against ${pct(0.055)}).`,
+  `<b>Three moderate leads, good in both years but not strong enough to trade on yet.</b> (1) The gap itself pushed the price above the company's warrant exercise price: ${pct(0.134)} a trade against ${pct(0.064)} for the rest, but only 27 + 5 trades. (2) Revenue down 39% or more on the year: ${pct(0.111)} against ${pct(0.055)}. (3) The stock rose a little after hours the evening before (0% to +14%): ${pct(0.107)} against ${pct(0.053)}. Watch these in paper trading; they are not rules.`,
   `<b>One weak warning sign:</b> companies that had signed convertible notes in the last 12 months did worse (${pct(0.035)} against ${pct(0.085)}) and lost money in the test year. Skipping them still failed the unseen-year test.`,
-  `<b>Technical factors added nothing reliable.</b> Moving averages, RSI, round numbers, double tops and the busiest pre-market minute all flip between the years.`,
-  `__AH__`,
+  `<b>The other technical factors added nothing reliable.</b> Moving averages, RSI, round numbers, double tops and the busiest pre-market minute all flip between the years.`,
+  `<b>After hours, the quiet ones were the weakest shorts.</b> Gappers that did not move after hours the evening before, so the whole gap came in the pre-market, lost money in the test year (${pct(-0.018)} a trade). Skipping them, learned on the test year, cut the build year's typical result from ${pct(1.069,0)} to ${pct(0.730,0)}, so it failed too.`,
   `<b>News sentiment covers too few trades.</b> Only about 1 in 8 trades had a Massive article with a sentiment score by 9:25. "Positive" ones did a little better, but it is unreliable.`,
 ];
 const FXT = {
   "Dilution": "The best-looking group is when the gap pushes the price above the warrant exercise price: the warrant holders can now cash in by selling shares, which pushes the price down. It was good in both years but rests on only 32 trades. Convertible notes were the opposite of what you might expect: those companies did worse, not better. Equity lines, the baby-shelf limit and IPO lockups made no reliable difference.",
   "Balance sheet": "Shrinking revenue was the one clear pattern: the companies whose revenue fell the most did better in both years. Tiny equity (under Nasdaq's $2.5M minimum) and lots of cash compared with the company's value leaned the same way, but weakly. Negative equity, debt and gross margin flip between the years.",
   "Listing": "A reverse split in the 30 days before leaned better, but weakly. How long ago the split was, and which exchange the stock trades on, made no reliable difference. Only 12 trades were on the main NYSE.",
-  "Technical": "__AH_TEXT__ The 200-day average is unknown for most build-year trades, only because the price data starts in November 2024; its 'unknown' group is about the data window, not the stocks.",
+  "Technical": "The after-hours move is the one technical factor with a pattern. Gappers that rose 0% to +14% the evening before did better in both years (moderate). Ones that did not move after hours did worst and lost money in the test year. One guess, not tested: a stock that already ran the evening before has more holders sitting on gains by 9:25, ready to sell. The share of the gap made after hours tells the same story, more weakly. Moving averages, RSI, round numbers, double tops and the busiest pre-market minute all flip between the years. The 200-day average is unknown for most build-year trades, only because the price data starts in November 2024; its 'unknown' group is about the data window, not the stocks.",
   "Sector": "Several gappers from the same industry on the same day, or in the 5 days before, made no reliable difference.",
   "News": "Massive's sentiment score exists only for the articles it covers, which is about 1 in 8 trades here. Trades with a 'positive' article did a little better, but the difference flips between the years, so it is unreliable.",
 };
@@ -339,7 +340,7 @@ if (FX) {
   document.getElementById("fx").hidden = false;
   const UNIT = {days_since_rsplit: "days", rsi14: "num", same_ind_today: "count", same_ind_prev5: "count"};
   const KEYS = {nasdaq: "Nasdaq", nyse: "NYSE", nyse_american: "NYSE American", "no article": "no scored article by 9:25"};
-  const fmt = (f, v) => UNIT[f] === "days" ? Math.round(v) + " days" : UNIT[f] === "num" ? v.toFixed(0) : UNIT[f] === "count" ? String(+v.toFixed(1)) : pct(v, 0);
+  const fmt = (f, v) => UNIT[f] === "days" ? Math.round(v) + " days" : UNIT[f] === "num" ? v.toFixed(0) : UNIT[f] === "count" ? String(+v.toFixed(1)) : pct(v, 0).replace(/^[+−]0%$/, "0%");
   const gname = (f, k) => {
     const c = FX.cuts[f];
     if (c && k.endsWith("third") && UNIT[f] === "count") { const [lo, hi] = c.map(Math.round);   // whole numbers read better
@@ -356,7 +357,7 @@ if (FX) {
     `These start from the current rules (+50% gap, going-concern warning, consumer and other services skipped): <b>${FX.n}</b> gappers, ${FX.nb} in the build year and ${FX.nt} in the test year. With at most 3 shorts open at once, the account takes about ${nb} and ${nt} of them. ` +
     `With those rules alone the test year's typical result is <span class="num">${pct(FB.test.typical_yr)}</span>, bad luck <span class="num">${pct(FB.test.bad_luck_yr)}</span>, worst drop <span class="num">${pct(FB.test.worst_drop)}</span>. ` +
     `That is a little flattering, because the industry list was learned using both years; about <span class="num">+18%</span> is the fair estimate. Every number is point-in-time: only filings, prices and news the bot could have seen by 9:25 that morning.`;
-  document.getElementById("fx-verdict").innerHTML = FXV.filter(v => !v.includes("__AH")).map(s => `<li>${s}</li>`).join("");
+  document.getElementById("fx-verdict").innerHTML = FXV.map(s => `<li>${s}</li>`).join("");
   const FAMS = [...new Set(FX.groups.map(g => g.fam))];
   let fam = FAMS[0];
   const fxt = document.getElementById("fx-tabs");
@@ -368,7 +369,7 @@ if (FX) {
     const all = FX.groups.filter(g => g.fam === fam).sort((a, b) => FORD.indexOf(a.f) - FORD.indexOf(b.f) || (GORD[a.key] ?? 5) - (GORD[b.key] ?? 5));
     dumbbell("fx-", all.filter(g => g.key !== "unknown" && g.nb >= 5 && g.nt >= 5), fam + " factors: average trade in each year");
     document.getElementById("fx-gtable").innerHTML = groupTable(all);
-    document.getElementById("fx-readout").innerHTML = `<h3>What this shows</h3><p>${(FXT[fam] || "").replace("__AH_TEXT__ ", "")}</p>`;
+    document.getElementById("fx-readout").innerHTML = `<h3>What this shows</h3><p>${FXT[fam] || ""}</p>`;
     const tests = FX.tests.filter(t => t.fam === fam);
     const used = tests.filter(t => t.skip_b !== "nothing" || t.skip_t !== "nothing");
     const sk = (f, s) => s === "nothing" ? "nothing" : s.split(", ").map(k => gname(f, k)).join("; ");
