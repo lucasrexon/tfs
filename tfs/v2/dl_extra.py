@@ -13,7 +13,7 @@ from datetime import datetime
 import pandas as pd
 
 from tfs.config import load_config, resolve
-from tfs.data.massive import MassiveClient
+from tfs.data.massive import MassiveClient, MassiveError
 
 
 def news_with_insights(cl: MassiveClient, ticker: str, start: str, end: str) -> int:
@@ -50,11 +50,17 @@ def main():
             print(f"[{datetime.now():%H:%M}] news {i}/{len(tickers)}", flush=True)
         news_with_insights(cl, tk, cfg["data"]["start"], cfg["data"]["end"])
     pairs = sorted(set(zip(t.ticker, t.prev_day)))
+    skipped = 0
     for i, (tk, d) in enumerate(pairs):
         if i % 100 == 0:
             print(f"[{datetime.now():%H:%M}] prev-day bars {i}/{len(pairs)}", flush=True)
-        cl.minute_bars(tk, d)
-    print("DL_EXTRA DONE", flush=True)
+        try:
+            cl.minute_bars(tk, d)
+        except MassiveError as e:   # day has rolled out of the free plan's 2-year window
+            if "timeframe" not in str(e):
+                raise
+            skipped += 1
+    print(f"DL_EXTRA DONE (skipped {skipped} days outside the plan window)", flush=True)
 
 
 if __name__ == "__main__":

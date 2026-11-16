@@ -55,7 +55,21 @@ def main():
                        x.headline_before_0925 if isinstance(x.headline_before_0925, str) else "",
                        nice(x.news_known_later), x.headline_later_today if isinstance(x.headline_later_today, str) else "",
                        r(x.pm_gap, 3), r(x.ret, 4), int(bool(x.hit)), int(bool(x.stopped))])
-    data = {"groups": groups, "filters": filt, "final": fin, "trades": trades,
+    fx = None
+    if (od / "factors_groups.csv").exists():
+        fg, fts = pd.read_csv(od / "factors_groups.csv"), pd.read_csv(od / "factors_tests.csv")
+        fb = json.loads((od / "factors_base.json").read_text())
+        fx = {"base": fb["base"], "n": fb["n"], "nb": fb.get("n_build"), "nt": fb.get("n_test"), "cuts": fb.get("cuts", {}),
+              "groups": [{"f": x.factor, "label": x.label, "fam": x.family, "cov": r(x.coverage, 3), "key": str(x.group),
+                          "n": int(x.n), "nb": int(x.n_build), "nt": int(x.n_test), "avg": r(x.avg_trade), "rest": r(x.avg_rest),
+                          "b": r(x.avg_build), "t": r(x.avg_test), "win": r(x.win_rate), "big": r(x.big_loss_rate),
+                          "p": r(x.p), "q": r(x.q), "sig": x.significance} for x in fg.itertuples()],
+              "tests": [{"f": x.factor, "label": x.label, "fam": x.family, "rule": x.rule,
+                         "skip_b": x.skip_learned_on_build, "skip_t": x.skip_learned_on_test,
+                         "t_typ": r(x.test_typical), "t_bad": r(x.test_bad), "t_dd": r(x.test_dd), "t_n": int(x.test_trades),
+                         "b_typ": r(x.build_typical), "b_bad": r(x.build_bad), "b_dd": r(x.build_dd), "b_n": int(x.build_trades),
+                         "passed": bool(x.passed)} for x in fts.itertuples()]}
+    data = {"groups": groups, "filters": filt, "final": fin, "trades": trades, "factors": fx,
             "coverage": {"trades": len(tr), "news_0925": int((tr.news_0925 != "none").sum()),
                          "news_any": int((tr.news_known_later != "none").sum()),
                          "build": int((tr.year == "build").sum()), "test": int((tr.year == "test").sum())}}

@@ -141,6 +141,29 @@ code{font-family:var(--mono);font-size:.9em}
     <div class="scroll"><table id="ftable"></table></div>
   </section>
 
+  <section id="fx" hidden>
+    <div class="eyebrow">Factors</div>
+    <h2>14 more fundamental and technical factors</h2>
+    <p id="fx-intro"></p>
+    <div class="verdict"><h3>What they found</h3><ul id="fx-verdict"></ul></div>
+    <div class="tabs" id="fx-tabs" role="group" aria-label="Pick a factor family"></div>
+    <div class="chart" id="fx-chart">
+      <div class="chart-head">
+        <h3 id="fx-chart-title"></h3>
+        <div class="key"><span><i style="background:var(--s-build)"></i>Build year</span><span><i style="background:var(--s-test)"></i>Test year</span></div>
+      </div>
+      <p class="dim-note">Average result per trade after costs, for trades that pass the current rules. "Low / middle / high third" splits the trades into three equal-sized groups by that factor. Groups with unknown values, or fewer than 5 trades in a year, are left off the chart but stay in the table.</p>
+      <div class="axis"><span class="spacer"></span><div class="ticks" id="fx-ticks-top"></div></div>
+      <div class="rows" id="fx-rows"></div>
+      <div class="tip" id="fx-tip" hidden></div>
+    </div>
+    <div class="scroll"><table id="fx-gtable"></table></div>
+    <div id="fx-readout" class="verdict"></div>
+    <h3>Skip rules, scored on the year they did not see</h3>
+    <p class="small">Same test as the news filters above: learn which groups to skip on one year, score on the other, then swap. Green and red compare with the current rules on that year. A rule passes only if it raises the typical year and does not worsen bad luck or the worst drop, both ways round.</p>
+    <div class="scroll"><table id="fx-ttable"></table></div>
+  </section>
+
   <section>
     <div class="eyebrow">Ledger</div>
     <h2>All trades and their news</h2>
@@ -222,25 +245,25 @@ function niceTicks(lo, hi) {
   const step = [1, 2, 2.5, 5, 10].map(m => m * mag).find(s => span / s <= 6);
   const out = []; for (let v = Math.ceil(lo / step) * step; v <= hi + 1e-9; v += step) out.push(+v.toFixed(6)); return out;
 }
-function drawPatterns() {
-  const all = D.groups.filter(g => g.dim === dim).sort((a, b) => ORDER[a.sig] - ORDER[b.sig] || (b.avg - a.avg));
-  const shown = all.filter(g => g.nb >= 5 && g.nt >= 5 && (dim !== "industry + news type" || g.sig !== "too few"));
-  document.getElementById("chart-title").textContent = DIMS.find(d => d[0] === dim)[1] + ": average trade in each year";
+// One dumbbell chart per prefix ("" for news patterns, "fx-" for factors): build-year and test-year average for each group.
+function dumbbell(p, shown, title) {
+  document.getElementById(p + "chart-title").textContent = title;
   const vals = shown.flatMap(g => [g.b, g.t]).filter(v => v != null);
   let lo = Math.min(0, ...vals), hi = Math.max(0, ...vals); const pad = (hi - lo) * 0.08 || 0.02; lo -= pad; hi += pad;
   const ticks = niceTicks(lo, hi); lo = Math.min(lo, ticks[0]); hi = Math.max(hi, ticks[ticks.length - 1]);
   const x = v => ((v - lo) / (hi - lo) * 100).toFixed(2) + "%";
-  document.getElementById("ticks-top").innerHTML = ticks.map(t => `<span style="left:${x(t)}">${pct(t, 0).replace("+0%", "0%").replace("−0%", "0%")}</span>`).join("");
+  document.getElementById(p + "ticks-top").innerHTML = ticks.map(t => `<span style="left:${x(t)}">${pct(t, 0).replace("+0%", "0%").replace("−0%", "0%")}</span>`).join("");
   const grid = ticks.map(t => `<span class="${t === 0 ? "zero" : "grid"}" style="left:${x(t)}"></span>`).join("");
-  document.getElementById("rows").innerHTML = shown.map((g, i) => {
+  const rowsEl = document.getElementById(p + "rows");
+  rowsEl.innerHTML = shown.map((g, i) => {
     const a = Math.min(g.b, g.t), b = Math.max(g.b, g.t);
     return `<div class="row" tabindex="0" data-i="${i}">
       <div class="lab">${esc(g.name)} ${chip(g.sig)}<br><span class="n num">${g.nb} + ${g.nt} trades</span></div>
       <div class="track">${grid}<span class="bar" style="left:${x(a)};width:calc(${x(b)} - ${x(a)})"></span>
         <span class="dot" style="left:${x(g.b)};background:var(--s-build)"></span><span class="dot" style="left:${x(g.t)};background:var(--s-test)"></span></div></div>`;
   }).join("") || `<p class="dim-note">No group in this view has at least 5 trades in each year.</p>`;
-  const tip = document.getElementById("tip"), chart = document.getElementById("chart");
-  document.querySelectorAll("#rows .row").forEach(el => {
+  const tip = document.getElementById(p + "tip"), chart = document.getElementById(p + "chart");
+  rowsEl.querySelectorAll(".row").forEach(el => {
     const g = shown[+el.dataset.i];
     const show = () => { tip.hidden = false;
       tip.innerHTML = `<b>${esc(g.name)}</b><br>Build year: ${pct(g.b)} a trade (${g.nb} trades)<br>Test year: ${pct(g.t)} a trade (${g.nt} trades)<br>All other trades: ${pct(g.rest)} · win rate ${pct(g.win,0).slice(1)}`;
@@ -249,11 +272,19 @@ function drawPatterns() {
     el.addEventListener("mouseenter", show); el.addEventListener("focus", show);
     el.addEventListener("mouseleave", () => tip.hidden = true); el.addEventListener("blur", () => tip.hidden = true);
   });
-  document.getElementById("gtable").innerHTML = `<thead><tr><th>Group</th><th>Trust</th><th class="r">Trades</th><th class="r">Avg trade</th><th class="r">All others</th>
+}
+function groupTable(all) {
+  return `<thead><tr><th>Group</th><th>Trust</th><th class="r">Trades</th><th class="r">Avg trade</th><th class="r">All others</th>
     <th class="r">Build year</th><th class="r">Test year</th><th class="r">Win rate</th><th class="r">Lost half+</th><th class="r">p</th></tr></thead><tbody>` +
     all.map(g => `<tr><td>${esc(g.name)}</td><td>${chip(g.sig)}</td><td class="r num">${g.n}</td><td class="r num">${pct(g.avg)}</td><td class="r num">${pct(g.rest)}</td>
       <td class="r num">${pct(g.b)}</td><td class="r num">${pct(g.t)}</td><td class="r num">${pct(g.win,0).slice(1)}</td><td class="r num">${pct(g.big,1).slice(1)}</td>
       <td class="r num">${g.p == null ? "–" : g.p < 0.001 ? "<0.001" : g.p.toFixed(3)}</td></tr>`).join("") + "</tbody>";
+}
+function drawPatterns() {
+  const all = D.groups.filter(g => g.dim === dim).sort((a, b) => ORDER[a.sig] - ORDER[b.sig] || (b.avg - a.avg));
+  const shown = all.filter(g => g.nb >= 5 && g.nt >= 5 && (dim !== "industry + news type" || g.sig !== "too few"));
+  dumbbell("", shown, DIMS.find(d => d[0] === dim)[1] + ": average trade in each year");
+  document.getElementById("gtable").innerHTML = groupTable(all);
   document.getElementById("readout").innerHTML = `<h3>What this shows</h3><p>${READ[dim]}</p>`;
 }
 drawPatterns();
@@ -283,6 +314,77 @@ function drawFilters() {
     })).join("") + "</tbody>";
 }
 drawFilters();
+
+// ---- factors: written after reading the results
+const FXV = [
+  `<b>None of the 14 factors passed.</b> Every skip rule either found nothing to skip or made the year it had not seen worse. The bot's rules stay as they are.`,
+  `<b>Two moderate leads, both too small to trade on yet.</b> When the gap itself pushed the price above the company's warrant exercise price, the short made ${pct(0.134)} a trade against ${pct(0.064)} for the rest, but that is only 27 + 5 trades. Companies whose revenue shrank the most did better in both years (${pct(0.111)} against ${pct(0.055)}).`,
+  `<b>One weak warning sign:</b> companies that had signed convertible notes in the last 12 months did worse (${pct(0.035)} against ${pct(0.085)}) and lost money in the test year. Skipping them still failed the unseen-year test.`,
+  `<b>Technical factors added nothing reliable.</b> Moving averages, RSI, round numbers, double tops and the busiest pre-market minute all flip between the years.`,
+  `__AH__`,
+  `<b>News sentiment covers too few trades.</b> Only about 1 in 8 trades had a Massive article with a sentiment score by 9:25. "Positive" ones did a little better, but it is unreliable.`,
+];
+const FXT = {
+  "Dilution": "The best-looking group is when the gap pushes the price above the warrant exercise price: the warrant holders can now cash in by selling shares, which pushes the price down. It was good in both years but rests on only 32 trades. Convertible notes were the opposite of what you might expect: those companies did worse, not better. Equity lines, the baby-shelf limit and IPO lockups made no reliable difference.",
+  "Balance sheet": "Shrinking revenue was the one clear pattern: the companies whose revenue fell the most did better in both years. Tiny equity (under Nasdaq's $2.5M minimum) and lots of cash compared with the company's value leaned the same way, but weakly. Negative equity, debt and gross margin flip between the years.",
+  "Listing": "A reverse split in the 30 days before leaned better, but weakly. How long ago the split was, and which exchange the stock trades on, made no reliable difference. Only 12 trades were on the main NYSE.",
+  "Technical": "__AH_TEXT__ The 200-day average is unknown for most build-year trades, only because the price data starts in November 2024; its 'unknown' group is about the data window, not the stocks.",
+  "Sector": "Several gappers from the same industry on the same day, or in the 5 days before, made no reliable difference.",
+  "News": "Massive's sentiment score exists only for the articles it covers, which is about 1 in 8 trades here. Trades with a 'positive' article did a little better, but the difference flips between the years, so it is unreliable.",
+};
+
+// ---- factors
+const FX = D.factors;
+if (FX) {
+  document.getElementById("fx").hidden = false;
+  const UNIT = {days_since_rsplit: "days", rsi14: "num", same_ind_today: "count", same_ind_prev5: "count"};
+  const KEYS = {nasdaq: "Nasdaq", nyse: "NYSE", nyse_american: "NYSE American", "no article": "no scored article by 9:25"};
+  const fmt = (f, v) => UNIT[f] === "days" ? Math.round(v) + " days" : UNIT[f] === "num" ? v.toFixed(0) : UNIT[f] === "count" ? String(+v.toFixed(1)) : pct(v, 0);
+  const gname = (f, k) => {
+    const c = FX.cuts[f];
+    if (c && k.endsWith("third") && UNIT[f] === "count") { const [lo, hi] = c.map(Math.round);   // whole numbers read better
+      return k === "low third" ? (lo === 0 ? "none" : `${lo} or fewer`) : k === "high third" ? `${hi + 1} or more` : (lo + 1 === hi ? `${hi}` : `${lo + 1} to ${hi}`); }
+    if (c && k.endsWith("third")) { const [lo, hi] = c.map(v => fmt(f, v));
+      return k === "low third" ? `lowest third (${lo} or less)` : k === "high third" ? `highest third (over ${hi})` : `middle third (${lo} to ${hi})`; }
+    return KEYS[k] || k;
+  };
+  const GORD = {"low third": 0, "middle third": 1, "high third": 2, no: 0, yes: 1, unknown: 9};
+  const FORD = [...new Set(FX.groups.map(g => g.f))];
+  FX.groups.forEach(g => g.name = `${g.label}: ${gname(g.f, g.key)}`);
+  const FB = FX.base, nb = FB.build.trades, nt = FB.test.trades;   // trades the simulated account takes (at most 3 open)
+  document.getElementById("fx-intro").innerHTML =
+    `These start from the current rules (+50% gap, going-concern warning, consumer and other services skipped): <b>${FX.n}</b> gappers, ${FX.nb} in the build year and ${FX.nt} in the test year. With at most 3 shorts open at once, the account takes about ${nb} and ${nt} of them. ` +
+    `With those rules alone the test year's typical result is <span class="num">${pct(FB.test.typical_yr)}</span>, bad luck <span class="num">${pct(FB.test.bad_luck_yr)}</span>, worst drop <span class="num">${pct(FB.test.worst_drop)}</span>. ` +
+    `That is a little flattering, because the industry list was learned using both years; about <span class="num">+18%</span> is the fair estimate. Every number is point-in-time: only filings, prices and news the bot could have seen by 9:25 that morning.`;
+  document.getElementById("fx-verdict").innerHTML = FXV.filter(v => !v.includes("__AH")).map(s => `<li>${s}</li>`).join("");
+  const FAMS = [...new Set(FX.groups.map(g => g.fam))];
+  let fam = FAMS[0];
+  const fxt = document.getElementById("fx-tabs");
+  fxt.innerHTML = FAMS.map(f => `<button type="button" aria-pressed="${f === fam}">${esc(f)}</button>`).join("");
+  fxt.addEventListener("click", e => { const b = e.target.closest("button"); if (!b) return; fam = FAMS[[...fxt.children].indexOf(b)];
+    [...fxt.children].forEach(x => x.setAttribute("aria-pressed", x === b)); drawFactors(); });
+  const lab = {build: "build year", test: "test year"};
+  function drawFactors() {
+    const all = FX.groups.filter(g => g.fam === fam).sort((a, b) => FORD.indexOf(a.f) - FORD.indexOf(b.f) || (GORD[a.key] ?? 5) - (GORD[b.key] ?? 5));
+    dumbbell("fx-", all.filter(g => g.key !== "unknown" && g.nb >= 5 && g.nt >= 5), fam + " factors: average trade in each year");
+    document.getElementById("fx-gtable").innerHTML = groupTable(all);
+    document.getElementById("fx-readout").innerHTML = `<h3>What this shows</h3><p>${(FXT[fam] || "").replace("__AH_TEXT__ ", "")}</p>`;
+    const tests = FX.tests.filter(t => t.fam === fam);
+    const used = tests.filter(t => t.skip_b !== "nothing" || t.skip_t !== "nothing");
+    const sk = (f, s) => s === "nothing" ? "nothing" : s.split(", ").map(k => gname(f, k)).join("; ");
+    const cls = (a, b) => a > b + 1e-9 ? "up" : a < b - 1e-9 ? "down" : "";
+    const row = (t, learn, score, s, n, typ, bad, dd, first) => { const r0 = FB[score];
+      return `<tr><td>${first ? esc(t.label) : ""}</td><td>${first ? esc(t.rule) : ""}</td><td>${lab[learn]} → ${lab[score]}</td><td class="small">${esc(sk(t.f, s))}</td>
+        <td class="r num">${n}</td><td class="r num ${cls(typ, r0.typical_yr)}">${pct(typ)}</td><td class="r num ${cls(bad, r0.bad_luck_yr)}">${pct(bad)}</td>
+        <td class="r num ${cls(dd, r0.worst_drop)}">${pct(dd)}</td><td>${first ? (t.passed ? '<span class="chip sig-moderate">passed</span>' : '<span class="chip sig-unreliable">failed</span>') : ""}</td></tr>`; };
+    document.getElementById("fx-ttable").innerHTML = `<thead><tr><th>Factor</th><th>Rule</th><th>Learned on → scored on</th><th>Skipped</th><th class="r">Trades taken</th><th class="r">Typical year</th><th class="r">Bad luck</th><th class="r">Worst drop</th><th>Result</th></tr></thead><tbody>` +
+      `<tr><td>Current rules (baseline)</td><td></td><td>scored on build year</td><td></td><td class="r num">${nb}</td><td class="r num">${pct(FB.build.typical_yr)}</td><td class="r num">${pct(FB.build.bad_luck_yr)}</td><td class="r num">${pct(FB.build.worst_drop)}</td><td></td></tr>` +
+      `<tr><td></td><td></td><td>scored on test year</td><td></td><td class="r num">${nt}</td><td class="r num">${pct(FB.test.typical_yr)}</td><td class="r num">${pct(FB.test.bad_luck_yr)}</td><td class="r num">${pct(FB.test.worst_drop)}</td><td></td></tr>` +
+      used.map(t => row(t, "build", "test", t.skip_b, t.t_n, t.t_typ, t.t_bad, t.t_dd, true) + row(t, "test", "build", t.skip_t, t.b_n, t.b_typ, t.b_bad, t.b_dd, false)).join("") +
+      (tests.length > used.length ? `<tr><td colspan="9" class="small">${tests.length - used.length} other ${tests.length - used.length === 1 ? "rule" : "rules"} in this family found nothing to skip in either year, so ${tests.length - used.length === 1 ? "it changes" : "they change"} nothing.</td></tr>` : "") + "</tbody>";
+  }
+  drawFactors();
+}
 
 // ---- ledger  [year,date,ticker,name,industry,gc,news,timing,headline,newsLater,headlineLater,gap,ret,hit,stopped]
 const TR = D.trades;

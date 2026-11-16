@@ -101,12 +101,14 @@ def main():
     for y, a in base.items():
         print(f"  {y}: typical {a['typical_yr']:+.1%}, bad luck {a['bad_luck_yr']:+.1%}, worst drop {a['worst_drop']:.1%}, avg trade {a['avg_trade']:+.2%}")
 
-    groups, tests = [], []
+    groups, tests, cuts = [], [], {}
     for name, (col, kind, label, fam) in FACTORS.items():
         if col not in x or x[col].notna().sum() < 30:
             print(f"  {name}: not enough data yet")
             continue
         cover = float(x[col].notna().mean())
+        if kind == "num" and x[col].dropna().nunique() >= 3:            # pooled third boundaries, for the report
+            cuts[name] = [float(x[col].quantile(1 / 3)), float(x[col].quantile(2 / 3))]
         g_all = bins(x[col], x[col], kind)                                 # pooled bins for the labels
         for val in sorted(g_all.unique()):
             m = g_all == val
@@ -155,7 +157,7 @@ def main():
     tt = pd.DataFrame(tests)
     gt.to_csv(od / "factors_groups.csv", index=False)
     tt.to_csv(od / "factors_tests.csv", index=False)
-    json.dump({"base": base, "n": len(x)}, open(od / "factors_base.json", "w"), default=float)
+    json.dump({"base": base, "n": len(x), "n_build": int((x.year == "build").sum()), "n_test": int((x.year == "test").sum()), "cuts": cuts}, open(od / "factors_base.json", "w"), default=float)
     pd.set_option("display.width", 260); pd.set_option("display.max_rows", 400); pd.set_option("display.max_colwidth", 40)
     print("\n=== Groups (pooled over both years) ===")
     print(gt[["factor", "group", "coverage", "n", "n_build", "n_test", "avg_trade", "avg_rest", "avg_build", "avg_test", "win_rate",
