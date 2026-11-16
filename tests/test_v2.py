@@ -205,3 +205,38 @@ def test_disaster_stop_fills_at_the_gap_and_tail_fit():
     t = tail_table(x, per_year=1000, levels=(5, 50), k=500)
     assert t.fit_per_year.iloc[0] == pytest.approx(1000 * 5.0 ** -2, rel=0.3)
     assert t.fit_per_year.iloc[1] < t.fit_per_year.iloc[0] / 50
+
+
+# ---------------------------------------------------------------- third batch: chosen factors
+def test_premarket_shape_climax_round_double_top():
+    from tfs.v2.factors_data import premarket_shape
+    c = np.r_[np.linspace(2.0, 4.9, 100), np.linspace(4.9, 4.3, 30), np.linspace(4.3, 4.89, 30), np.linspace(4.89, 4.0, 165)]
+    b = day_bars(c, start_min=240)
+    b.iloc[120, b.columns.get_loc("v")] = 5e6                      # busiest minute, its low near 4.4
+    r = {"pm_last": 4.0, "pm_high": float(b[b.index < b.index[0].normalize() + pd.Timedelta("9h25m")]["h"].max()), "factor": 1.0}
+    s = premarket_shape(b, r)
+    assert s["below_climax_low"] == 1 and s["climax_low_dist"] < 0
+    assert s["just_under_round"] == 1 and s["round_gap"] == pytest.approx(5 / r["pm_high"] - 1)
+    assert s["double_top"] == 1
+    one = premarket_shape(day_bars(np.linspace(2.0, 4.0, 325), start_min=240), {"pm_last": 4.0, "pm_high": 4.0, "factor": 1.0})
+    assert one["double_top"] == 0 and one["below_climax_low"] == 0
+
+
+def test_daily_trend_and_split_adjustment():
+    from tfs.v2.factors_data import daily_trend, split_adj
+    days = pd.bdate_range("2025-01-01", periods=60).strftime("%Y-%m-%d")
+    h = pd.DataFrame({"date": days, "c": np.linspace(1.0, 2.0, 60)})
+    t = daily_trend(h, days[-1])
+    assert t["rsi14"] == 100.0 and t["vs_sma20"] > 0 and "vs_sma200" not in t
+    rs = [{"execution_date": "2025-03-01", "split_from": 10, "split_to": 1}]
+    assert split_adj(rs, "2025-01-31", "2025-04-01") == 10.0        # a $1 warrant becomes $10 after a 1-for-10
+    assert split_adj(rs, "2025-03-31", "2025-04-01") == 1.0
+
+
+def test_factor_bins_use_the_training_year_cut_points():
+    from tfs.v2.factors import bins, learn
+    train = pd.Series([1, 2, 3, 4, 5, 6, 7, 8, 9])
+    out = bins(train, pd.Series([0, 5, 100, None]), "num")
+    assert list(out) == ["low third", "middle third", "high third", "unknown"]
+    tr = pd.DataFrame({"g": ["a"] * 12 + ["b"] * 12, "ret": [0.1] * 12 + [-0.05] * 12})
+    assert learn(tr, "g", "avg below zero") == {"b"}
