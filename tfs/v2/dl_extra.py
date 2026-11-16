@@ -8,6 +8,7 @@
 from __future__ import annotations
 
 import json
+import sys
 from datetime import datetime
 
 import pandas as pd
@@ -45,10 +46,16 @@ def main():
     g = pd.read_parquet(resolve(cfg, "output") / "v2" / "gappers40.parquet")[["date", "ticker", "prev_day"]]
     t = t.merge(g, on=["date", "ticker"])
     tickers = sorted(t.ticker.unique())
-    for i, tk in enumerate(tickers):
-        if i % 50 == 0:
-            print(f"[{datetime.now():%H:%M}] news {i}/{len(tickers)}", flush=True)
-        news_with_insights(cl, tk, cfg["data"]["start"], cfg["data"]["end"])
+    if "--base-only" in sys.argv:          # only the trades the factor test uses: going-concern warning, industry not skipped
+        from tfs.v2.patterns import load
+        b = load(cfg)
+        b = b[(b.going_concern == "warning") & ~b.industry.isin(cfg["v2"]["strategy"]["skip_industries"])]
+        t = t.merge(b[["date", "ticker"]], on=["date", "ticker"])
+    else:
+        for i, tk in enumerate(tickers):
+            if i % 50 == 0:
+                print(f"[{datetime.now():%H:%M}] news {i}/{len(tickers)}", flush=True)
+            news_with_insights(cl, tk, cfg["data"]["start"], cfg["data"]["end"])
     pairs = sorted(set(zip(t.ticker, t.prev_day)))
     skipped = 0
     for i, (tk, d) in enumerate(pairs):
