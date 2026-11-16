@@ -78,13 +78,23 @@ live:
   kill_switch_file: STOP                 # create a file named STOP to block all new orders
   allow_overnight: false                 # live bot flattens everything at eod_exit
 
-# ---------------------------------------------------------------- v2 (no-stop research), decided 2026-11-13
-# Chosen after the build-year research. The sealed test year has NOT been run with these yet.
+# ---------------------------------------------------------------- v2 final strategy, fixed 2026-11-16 BEFORE the sealed test
+# Chosen on the build year only (tfs.v2.combine, combination C1). The sealed test runs it once.
 v2:
-  position_pct: 0.024              # each short is 2.4% of the account (survives a 21x run-up at 100% margin)
-  disaster_stop_x: 3.0             # far-away stop at 3x the entry price; a gap or halt can fill above it
-  methods:                         # the two methods to test once on the sealed year
-    - {name: pm_0925_20, min_gap: 0.50, entry: pm_0925, target: 0.20, limit_days: 1}
-    - {name: close_1555_10, min_gap: 0.50, entry: close_1555, target: 0.10, limit_days: 1}
-  filter_check: skip_pmh_after_0900   # also report each method without gappers whose pre-market high came after 09:00
-  sealed_test_run: false
+  strategy:
+    name: gc_0925_short
+    min_gap: 0.50                  # 09:25 pre-market price at least 50% above the previous close
+    min_price: 1.00                # plus the usual scan rules (pre-market volume, price floor)
+    require_going_concern: true    # a 10-K/10-Q/20-F saying "substantial doubt", filed in the 456 days before
+    entry: pm_0925                 # short at 09:25, before the open
+    target: 0.20                   # buy to cover 20% below the entry
+    limit_days: 1                  # otherwise cover at the next trading day's close
+    disaster_stop_x: 3.0           # stop at 3x the entry price; a gap or halt can fill above it
+    position_pct: 0.024            # each short is 2.4% of the account
+    max_open: 3                    # at most 3 shorts open at once; if more qualify, pick at random
+  sealed_test:
+    primary: gc_0925_short, up to 3 open
+    secondary: [same with 1 open, 09:25 short without the going-concern rule]
+    excluded: gappers whose next trading day is not in the data yet
+    pass_if: average trade positive with t-stat >= 2, typical account result positive, never liquidated
+    run: false
