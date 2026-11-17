@@ -103,3 +103,18 @@ v2:
     excluded: gappers whose next trading day is not in the data yet
     pass_if: average trade positive with t-stat >= 2, typical account result positive, never liquidated
     run: true                      # ran 2026-11-16: FAILED (avg trade +1.7%, t 0.74); see reports/sealed_result.json
+  # Second sealed test, written down 2026-11-17 BEFORE any price data older than 2024-11-11 was downloaded.
+  # The 4 older years were never used to build or tune anything. Prices: Alpaca (SIP feed, split-adjusted);
+  # stock list: FINRA daily short-volume files (includes later-delisted stocks); news, splits, company
+  # details: Massive; filings: SEC. Run once; do not change these rules after seeing the result.
+  history_test:
+    period: ["2020-11-10", "2024-11-08"]
+    primary: the strategy block above exactly as written today (incl. skip_industries consumer, other), up to 3 open
+    secondary: [same without skip_industries (what the first sealed test ran), same with 1 open]
+    vendor_check: before scoring, rebuild 2024-11-11 to 2026-11-10 from Alpaca and compare with the Massive
+                  data; if the gapper lists or trade results differ materially, fix the pipeline first and
+                  only then run the test (the check uses only years already seen)
+    pass_if: average trade positive with t-stat >= 2, typical account result positive in every one of
+             the 4 years, never liquidated, worst single trade no worse than -10% of the account
+    also_report: per year and per quarter, biggest squeeze vs the 3x stop, results with 1% and 3% extra cost
+    run: false
