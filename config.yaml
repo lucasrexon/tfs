@@ -10,6 +10,13 @@ data:
   # build_end "2025-10-31" (4 years to build, last year sealed).
   start: "2024-11-11"
   end: "2026-11-10"
+  alpaca:                                # older prices (Massive free plan stops at 2 years); see tfs/data/alpaca_data.py
+    feed: sip                            # all exchanges; free plan allows SIP history older than 15 minutes
+    adjustment: split                    # same as Massive adjusted=true
+    max_requests_per_minute: 190         # free plan limit is about 200
+  history:                               # the extra years, for the second sealed test (v2.history_test)
+    start: "2020-10-01"                  # a month early, for the first days' previous close
+    end: "2024-11-08"
   max_requests_per_minute: 5
   stock_types: [CS, ADRC]                # common stock + ADRs. No ETFs, warrants, units, rights. OTC excluded.
 
