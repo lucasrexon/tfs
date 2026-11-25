@@ -188,11 +188,56 @@ const upct = (v, d=0) => v == null || !isFinite(v) ? "–" : (v * 100).toFixed(d
 const f2 = v => v == null || !isFinite(v) ? "–" : v.toFixed(2);
 const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 const money = v => "$" + Math.round(v).toLocaleString("en-US");
-const S = D.scenarios, B = D.benchmarks, H = D.hybrid, PT = D.per_trade, A = D.assignment;
+const S = D.scenarios, B = D.benchmarks, H = D.hybrid, PT = D.per_trade, A = D.assignment, CP = D.components;
 const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
 const yrs = (new Date(D.period[1]) - new Date(D.period[0])) / 3.15576e10;
 /*__TEXT__*/
-const TEXT = window.HDC_TEXT || {verdict: ['(text pending)'], trade: '', assign: '', tax: '', taxFoot: '', real: '', cost: '', method: [''], code: ''};
+const a00 = A["0.0"], a15x = A["0.15"], a100 = A["1.0"], ar = A.rational;
+const dragPre = a15x.pre_tax.cagr - a00.pre_tax.cagr, dragTax = a15x.A_short_term_offset.cagr - a00.A_short_term_offset.cagr;
+const helps = a100.pre_tax.cagr >= a00.pre_tax.cagr;
+const RL = D.real && D.real.per_trade ? D.real : null;
+const fitted = D.calibration.n >= 30, pts = v => Math.abs(v * 100).toFixed(1) + " points";
+const TEXT = {
+  verdict: [
+    `<b>Before tax it works, a little.</b> ${pct(S.A_pre_tax.cagr)} a year with a ${pct(S.A_pre_tax.max_dd)} worst drawdown and a Sharpe ratio of ${f2(S.A_pre_tax.sharpe)}, against SPY's ${pct(B.spy_pre_tax.cagr)}, ${pct(B.spy_pre_tax.max_dd)} and ${f2(B.spy_pre_tax.sharpe)}. The average trade made ${pct(PT.spec_rule.avg, 2)} of the stock price and ${upct(PT.spec_rule.win)} of trades won.`,
+    `<b>The call is what makes it work.</b> The same dates with no call made ${pct(PT.unhedged.avg, 2)} a trade, because the stock falls by about the dividend on the ex-date. The profit is the call's time value minus costs, not the dividend.`,
+    `<b>Risk is much lower than buy-and-hold</b>: the worst drawdown is ${upct(1 - Math.abs(S.A_pre_tax.max_dd) / Math.abs(B.spy_pre_tax.max_dd))} smaller than SPY's and volatility ${upct(1 - S.A_pre_tax.vol / B.spy_pre_tax.vol)} lower, mostly because the money is in a trade only a few days at a time. As a 20% sleeve next to SPY it barely changes the risk (${pct(H.pre_tax.hybrid.max_dd)} vs ${pct(B.spy_pre_tax.max_dd)}) and ${H.pre_tax.hybrid.cagr <= B.spy_pre_tax.cagr ? "costs" : "adds"} ${pts(B.spy_pre_tax.cagr - H.pre_tax.hybrid.cagr)} a year of return.`,
+    `<b>Early exercise is not the drag the spec expects.</b> With 15% of calls exercised early the return is ${pct(a15x.pre_tax.cagr, 2)} a year instead of ${pct(a00.pre_tax.cagr, 2)} (${dragPre >= 0 ? "+" : "−"}${Math.abs(dragPre * 100).toFixed(2)} points). ${helps ? "Being exercised early hands you the call's time value without the ex-date drop, so it smooths results rather than hurting them." : "Each exercised call gives up the dividend but also skips the ex-date drop, so the cost is small."} The spec's rule, time value below the dividend, picks the calls a rational holder <i>should</i> exercise (${upct(D.rational_share)} of these trades).`,
+    `<b>Taxes decide it.</b> In Scenario A the dividend is ordinary income at 37% while the stock-and-call part is a capital loss. If those losses can offset gains elsewhere, the after-tax return is ${pct(S.A_short_term_offset.cagr)} a year. In an account with no other gains, capital losses shelter only $3,000 of ordinary income a year, and the return becomes ${pct(S.A_short_term.cagr)}.`,
+    `<b>Scenario B cannot get the 20% rates as designed.</b> A call that is in the money with under 30 days left is not a qualified covered call, so the hedged days do not count toward the 61-day test, and only 59 days of the dividend's 121-day window remain after the call is closed. Under actual US rules B is taxed like A (${pct(S.B_actual_law_offset.cagr)} after tax, against ${pct(S.B_as_specified_offset.cagr)} if 20% applied). Its higher pre-tax return comes from holding the stock unhedged for two months, with a ${pct(S.B_pre_tax.max_dd)} drawdown to match.`,
+    `<b>The option bid-ask spread, missing from the spec's costs, matters as much as anything here.</b> At 2¢ a share each way the average trade falls to ${pct(D.option_spread["0.02"].per_trade.avg, 2)}; at 5¢, to ${pct(D.option_spread["0.05"].per_trade.avg, 2)}.`,
+    RL ? `<b>Real option prices</b> (Dec 2024 – Nov 2026, ${RL.n} trades with downloaded prices so far): ${pct(RL.per_trade.avg, 2)} a trade against ${pct(RL.model_same_events.avg, 2)} for the model on the same events. ${fitted ? `The model's volatility multiplier, ${D.calibration.used}×, was fitted to ${D.calibration.n} real call prices.` : `Too few real prices so far to fit the model; it uses ${D.calibration.used}× realized volatility.`}` : `Real option prices are still downloading.`,
+  ],
+  trade: `On average the dividend was ${pct(CP.div, 2)} of the stock price, the stock fell ${pct(CP.stock, 2)} from entry to exit (the ex-date drop plus the market's move), the call gained ${pct(CP.option, 2)}, and costs took ${pct(-CP.cost, 2)}. That leaves ${pct(CP.net, 2)}. The call's time value at entry, the part of its price above intrinsic value, averaged ${pct(CP.e0, 2)}; that is roughly what the trade earns when nothing goes wrong. The worst 5% of trades lost ${pct(PT.spec_rule.p05, 2)} or more: a covered call only cushions a fall by the premium, so a stock that drops well below the strike loses almost like the stock itself.`,
+  assign: `<p><b>The rule in the spec is inverted.</b> The holder of a call should exercise it the evening before the ex-date whenever the dividend is larger than the time value the call would have left afterward, because exercising gets them the stock, and the dividend, for the strike. "Only calls whose time value is below the dividend" therefore picks exactly the calls most likely to be exercised early. To <i>avoid</i> early exercise you would sell calls whose time value is larger than the dividend (the last row of the per-trade table: ${pct(PT.rule_flipped.avg, 2)} a trade over ${PT.rule_flipped.n.toLocaleString()} trades).</p>
+    <p><b>Being exercised early is not a disaster for the seller.</b> You deliver the stock at the strike, keep the whole premium, and miss both the dividend and the ex-date drop, so the trade earns the time value you sold, minus costs: ${pct(PT.assigned_path.avg, 2)} on average, with ${upct(PT.assigned_path.win)} winners. Exercise only happens when the call is in the money the evening before (${upct(D.itm_at_exm1_share)} of trades).</p>`,
+  tax: `<p><b>Scenario A.</b> Holding under 61 days makes the dividend non-qualified: ordinary income at 37%. The stock's loss and the call's gain are short-term capital (gains on written options are always short-term). Because the stock drops by about the dividend, a typical trade has a taxable dividend and a capital loss of nearly the same size. The two only cancel if the investor has other capital gains to use the losses against.</p>
+    <p><b>Scenario B.</b> The spec relies on the qualified-covered-call rules to reach 20%. Those rules cover calls with more than 30 days to expiry that are not deep in the money, and even then an in-the-money qualified call stops the holding-period clock while it is open. A 7–14 day in-the-money call qualifies under none of them: the stock and call form a straddle, the hedged days do not count, and the capital-gain holding period restarts when the call is closed. Selling 62 days after entry is still short-term for the stock, so every part of B is taxed at 37%.</p>`,
+  taxFoot: `"Losses usable" assumes enough other capital gains that this account's capital losses save tax in the same year at the same rate. "Stand-alone" applies the real limit: capital losses offset capital gains and then $3,000 of ordinary income a year, with the rest carried forward. T-bill interest on idle cash is ordinary income in every case. State tax and the 3.8% net investment income tax are left out, as in the spec. The Scenario B rows keep each stock 62 calendar days, so with 10 open at most they take far fewer trades.`,
+  real: `${RL ? `Real daily option prices for ${RL.n} events with downloaded data. A strike with no trade on the entry day is skipped; later days with no trade (${upct(RL.filled_share)} of trades had at least one) are filled from the model. These are last-trade prices, not quotes, so they say nothing about the bid-ask spread.` : "Real option prices are still downloading."} The model prices every call with an American binomial tree that includes the dividend, using 30-day realized volatility times ${D.calibration.used}${fitted ? `, the multiplier that best matches ${D.calibration.n} real call prices on their entry day (average miss $${(D.calibration.mean_abs_err || 0).toFixed(3)} a share)` : " (too few real prices yet to fit it)"}.`,
+  cost: `The spec charges 0.05% per stock trade and $0.65 per contract. It charges nothing for the option's own bid-ask spread, and in-the-money calls on large caps typically trade 2–10¢ wide. Each option trade crosses half of it: once when selling the call and once when buying it back.`,
+  method: [
+    `<b>Universe.</b> NYSE and Nasdaq common stocks of US companies that file with the SEC, worth at least $10 billion on the entry day (price × the latest SEC share count), with an indicated yield above 3%, trading at least $25 million a day. Partnerships, preferred shares, foreign filers and business development companies are left out, as the S&P 500 does. No free source has point-in-time S&P 500 membership, so this stands in for it: ${D.n_tickers} companies over the period.`,
+    `<b>Earnings filter.</b> Events with an earnings release within 2 trading days of the ex-date are dropped (Yahoo earnings dates): ${(D.n_events[0] - D.n_events[1]).toLocaleString()} of ${D.n_events[0].toLocaleString()}.`,
+    `<b>Trades.</b> Buy at the close 2 trading days before the ex-date, sell the 1-strike in-the-money call if its time value is below the dividend, otherwise the 2-strike one, otherwise skip (${(D.skips["rule not met"] || 0).toLocaleString()} events). Expiry: the first listed Friday 7–14 days out; before 2013 only monthly expiries are assumed, so ${(D.skips["no 7-14 day expiry"] || 0).toLocaleString()} events had none. Exit at the close the day after the ex-date, or leave a deep in-the-money call (under 3¢ of time value) to be assigned at expiry.`,
+    `<b>Option prices.</b> Yahoo has no historical option prices, so 2010–2024 calls are priced by the model. Dec 2024 on, real Massive daily prices are compared on the same events.`,
+    `<b>Survivorship.</b> Yahoo mostly drops delisted stocks, so companies acquired or delisted before 2026 are missing. It matters little for a 3-day hedged trade but flatters the high-yield buy-and-hold basket.`,
+    `<b>Prices.</b> Yahoo closes adjusted for splits but not dividends, so the ex-date drop is in the data. Entry and exit at the close; the dividend is credited on the ex-date.`,
+  ],
+  code: `def trade_pnl(s0, k, c0, closes, calls, ex, exit_day, div, costs, assigned_early):
+    """Per share. s0 stock at entry, k strike, c0 call premium received."""
+    open_cost = s0 * costs.stock_pct + costs.opt_comm / 100 + costs.opt_half_spread
+    if assigned_early:                      # holder exercised the evening before the ex-date
+        return (k - s0) + c0 - open_cost    # = time value sold - costs; no dividend
+    s1, c1 = closes[exit_day], calls[exit_day]
+    if c1 - (s1 - k) <= 0.03:               # deep in the money: let it be assigned at expiry
+        return (k - s0) + c0 + div - open_cost
+    close_cost = s1 * costs.stock_pct + costs.opt_comm / 100 + costs.opt_half_spread
+    return (s1 - s0) + (c0 - c1) + div - open_cost - close_cost
+
+# tax, per year (Scenario A): dividends are ordinary income, stock + option are capital
+# capital = sum(stock + option - costs); losses offset gains, then $3,000 of ordinary income`,
+};
 
 // ------------------------------------------------------------------ small SVG helpers
 const NS = "http://www.w3.org/2000/svg";
@@ -337,7 +382,6 @@ document.getElementById("risk-table").innerHTML = `<thead><tr><th>Compared</th><
   .map(([n, a, b]) => `<tr><td>${n}</td><td class="r num">${pct(a.max_dd)}</td><td class="r num">${pct(b.max_dd)}</td><td class="r num">${upct(red(a.max_dd, b.max_dd))}</td><td class="r num">${upct(red(a.vol, b.vol))}</td></tr>`).join("") + "</tbody>";
 
 // ------------------------------------------------------------------ one trade
-const CP = D.components;
 document.getElementById("trade-text").innerHTML = TEXT.trade;
 hbar("c-svg", "c-tip", "c-chart", [
   {label: "Dividend", value: CP.div, tip: "Dividend received, average per trade"},
