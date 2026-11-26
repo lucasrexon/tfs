@@ -35,7 +35,10 @@ def main():
     tt = pd.read_csv(od / "trades_model.csv")
     edges = np.arange(-0.06, 0.0401, 0.0025)
     hist = np.histogram(tt.net.clip(-0.06, 0.04), bins=edges)[0].tolist()
-    data = clean({**r, "curves": curves, "hist": {"edges": edges.round(4).tolist(), "counts": hist}})
+    itm = tt[tt.itm_at_exm1.astype(bool)]
+    exercise = {k: {"n": int(len(g)), "kept": float(g.net.mean()), "assigned": float(g.assigned_net.mean())}
+                for k, g in (("rational", itm[itm.rational.astype(bool)]), ("other", itm[~itm.rational.astype(bool)]))}
+    data = clean({**r, "curves": curves, "hist": {"edges": edges.round(4).tolist(), "counts": hist}, "exercise": exercise})
     html = (resolve(cfg, "dashboard_page") / "hdc_template.html").read_text()
     out = resolve(cfg, "reports") / "hdc.html"
     out.write_text(html.replace("/*__DATA__*/null", json.dumps(data, separators=(",", ":"))))
