@@ -21,6 +21,24 @@ def clean(x):
     return x
 
 
+def _stats(x: pd.Series) -> dict:
+    return {"n": int(len(x)), "avg": float(x.mean()), "median": float(x.median()), "win": float((x > 0).mean()),
+            "p05": float(x.quantile(0.05))}
+
+
+def matched(od, tt: pd.DataFrame) -> dict | None:
+    """Real against model prices on the events both traded."""
+    f = od / "trades_real.csv"
+    if not f.exists():
+        return None
+    j = pd.read_csv(f).merge(tt, on=["ticker", "ex"], suffixes=("_r", "_m"))
+    if len(j) < 2:
+        return None
+    d = j.net_r - j.net_m
+    return {"real": _stats(j.net_r), "model": _stats(j.net_m), "diff": float(d.mean()),
+            "diff_se": float(d.std() / np.sqrt(len(d))), "e0_real": float(j.e0_r.mean()), "e0_model": float(j.e0_m.mean())}
+
+
 def main():
     cfg = load_config()
     od = resolve(cfg, "output") / "hdc"
@@ -38,7 +56,8 @@ def main():
     itm = tt[tt.itm_at_exm1.astype(bool)]
     exercise = {k: {"n": int(len(g)), "kept": float(g.net.mean()), "assigned": float(g.assigned_net.mean())}
                 for k, g in (("rational", itm[itm.rational.astype(bool)]), ("other", itm[~itm.rational.astype(bool)]))}
-    data = clean({**r, "curves": curves, "hist": {"edges": edges.round(4).tolist(), "counts": hist}, "exercise": exercise})
+    data = clean({**r, "curves": curves, "hist": {"edges": edges.round(4).tolist(), "counts": hist}, "exercise": exercise,
+                  "matched": matched(od, tt)})
     html = (resolve(cfg, "dashboard_page") / "hdc_template.html").read_text()
     out = resolve(cfg, "reports") / "hdc.html"
     out.write_text(html.replace("/*__DATA__*/null", json.dumps(data, separators=(",", ":"))))
