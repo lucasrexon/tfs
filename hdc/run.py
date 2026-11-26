@@ -133,7 +133,7 @@ def main(n_sims: int = 40):
     print(f"trades {len(tr)} ({time.time() - t0:.0f}s)")
 
     # account level: scenarios
-    sc = {}
+    sc, ref = {}, {}
     curves = {}
     for name, path, tax in (("A_pre_tax", "kept", "pre_tax"), ("A_short_term", "kept", "A_short_term"),
                             ("B_pre_tax", "hold61", "pre_tax"), ("B_as_specified", "hold61", "B_as_specified"),
@@ -142,7 +142,10 @@ def main(n_sims: int = 40):
                             ("B_as_specified_offset", "hold61", "B_as_specified_offset"),
                             ("B_actual_law_offset", "hold61", "B_actual_law_offset"),
                             ("unhedged_A_offset", "unhedged", "A_short_term_offset")):
-        r = run_sims(tr, cal, rate, costs, path, tax, 0.0, 1)
+        kw = {"allowed": ref[path]} if tax != "pre_tax" and path in ref else {}
+        r = run_sims(tr, cal, rate, costs, path, tax, 0.0, 1, **kw)
+        if tax == "pre_tax":
+            ref[path] = set(r["result"]["log"].i)
         sc[name] = strip(r["median"])
         curves[name] = r["result"]["equity"]
     # early assignment

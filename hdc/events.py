@@ -21,20 +21,100 @@ MIN_DOLLAR_VOLUME = 25e6     # 60-day median $ traded per day; every real large 
 BDC = {"ARCC"}               # business development companies: not eligible for the S&P 500
 
 
-def shares_asof(sh: pd.DataFrame, dates: pd.Index) -> pd.Series:
-    """Latest SEC share count dated on or before each date (forward filled)."""
+# Companies that re-registered under a new SEC number (holding-company reorganizations, mergers): their
+# earlier share counts sit under the old number. Found by matching names in the SEC frames.
+PREDECESSOR = {2115436: (34088,),      # ExxonMobil Holdings (2026) <- Exxon Mobil Corp
+               2012383: (1364742,),    # BlackRock (2024) <- BlackRock Inc.
+               1701605: (808362,),     # Baker Hughes Co <- Baker Hughes Inc / Holdings LLC
+               1666700: (30554,),      # DuPont de Nemours <- E. I. du Pont de Nemours
+               2041610: (813828,)}     # Paramount Skydance <- CBS / ViacomCBS / Paramount Global
+BACKFILL_DAYS = 3 * 365      # SEC share data that starts late: use the first count for up to 3 years before it
+NO_BACKFILL = {1711269}      # Evergy: formed by a 2018 merger that doubled the share count
+
+
+def company_shares(sh: pd.DataFrame, cik: int) -> pd.DataFrame:
+    """A company's SEC share counts, with any predecessor's counts before its own begin."""
+    own = sh[sh.cik == cik]
+    old = sh[sh.cik.isin(PREDECESSOR.get(cik, ()))]
+    if len(own):
+        old = old[old.end < own.end.min()]
+    return pd.concat([old, own])
+
+
+def shares_asof(sh: pd.DataFrame, dates: pd.Index, backfill: bool = True) -> pd.Series:
+    """Latest SEC share count dated on or before each date (forward filled); dates up to BACKFILL_DAYS
+    before the first count get the first count."""
     s = sh.set_index("end").shares.sort_index()
     s = s[~s.index.duplicated(keep="last")]
-    return s.reindex(s.index.union(dates)).ffill().reindex(dates)
+    out = s.reindex(s.index.union(dates)).ffill().reindex(dates)
+    if backfill and len(s):
+        first = pd.Timestamp(s.index[0])
+        early = (pd.to_datetime(dates) < first) & (pd.to_datetime(dates) >= first - pd.Timedelta(days=BACKFILL_DAYS))
+        out[early] = float(s.iloc[0])
+    return out
 
 
-def frequency(ex_dates: list[str], i: int) -> int:
-    """Payments per year, from the ex-dates in the 365 days up to and including this one."""
-    d = pd.Timestamp(ex_dates[i])
-    n = sum(1 for x in ex_dates[: i + 1] if (d - pd.Timestamp(x)).days < 365)
-    if n >= 10:
-        return 12
-    return min((4, 2, 1), key=lambda f: abs(f - n)) if i >= 3 else 4
+SPECIAL_MULT = 1.6           # a payment this many times the typical one is a special dividend
+FREQ_BANDS = ((20, 45, 12), (60, 120, 4), (150, 220, 2), (300, 430, 1))   # median days between payments
+
+
+def regular_dividend(dates: list, amounts: list[float], i: int) -> tuple[int | None, float | None, bool]:
+    """(payments a year, regular payment, is payment i a special), using only the payments up to i.
+
+    Specials, in date order: a payment over SPECIAL_MULT x the median of the last 4 regular ones (two alike
+    in a row are a raise instead). Payments off the schedule (under half the usual gap after the previous
+    one) count as a quarter paid in two parts if they add up to about one regular payment, else as specials.
+    The schedule must be steady (every recent gap 0.5-1.6x the median, at least 3 regular payments in the
+    last 850 days) or the result is None. The indicated dividend (latest regular x payments a year) is
+    capped at 1.35x the regular payments of the past year, which catches schedules misread from the gaps."""
+    special, reg_amts = [], []
+    for k in range(i + 1):
+        a = float(amounts[k])
+        if len(reg_amts) >= 2 and a > SPECIAL_MULT * float(np.median(reg_amts[-4:])):
+            if special and special[-1] and abs(a - float(amounts[k - 1])) <= 0.2 * a:
+                special[-1] = False                               # a raise, not two specials
+                reg_amts += [float(amounts[k - 1]), a]
+                special.append(False)
+            else:
+                special.append(True)
+            continue
+        reg_amts.append(a)
+        special.append(False)
+    d_i = pd.Timestamp(dates[i])
+    day = {k: pd.Timestamp(dates[k]).value / 864e11 for k in range(i + 1)}
+    w = [k for k in range(i + 1) if (d_i - pd.Timestamp(dates[k])).days <= 850 and not special[k]]
+    if len(w) < 3:
+        return None, None, special[i]
+    gm = float(np.median(np.diff([day[k] for k in w])))
+    level = float(np.median([amounts[k] for k in w[-4:]]))
+    groups, off = [], set()
+    for k in w:
+        if groups and day[k] - groups[-1][0] < 0.5 * gm:
+            if groups[-1][1] + amounts[k] <= 1.3 * level:         # a quarter paid in two parts
+                groups[-1] = [day[k], groups[-1][1] + float(amounts[k])]
+            else:
+                off.add(k)                                       # an extra payment: a special
+            continue
+        groups.append([day[k], float(amounts[k])])
+    is_special = bool(special[i] or i in off)
+    if len(groups) < 3:
+        return None, None, is_special
+    tail = groups[-5:]
+    days = [x for x, _ in tail]
+    gaps = np.diff(days)
+    # Yahoo merges a special paid with a regular dividend into one payment, which then looks like a gap of
+    # two periods: count such a gap as the periods it spans when a special falls inside it
+    sp_days = [day[k] for k in range(i + 1) if special[k] or k in off]
+    g_min = float(gaps.min())
+    gaps = np.array([gp / max(1, round(gp / g_min)) if any(a < x < b for x in sp_days) else gp
+                     for gp, a, b in zip(gaps, days[:-1], days[1:])])
+    g = float(np.median(gaps))
+    freq = next((f for lo, hi, f in FREQ_BANDS if lo <= g < hi), None)
+    if freq is None or (gaps < 0.5 * g).any() or (gaps > 1.6 * g).any():
+        return None, None, is_special
+    ttm = sum(float(amounts[k]) for k in w if k not in off and (d_i - pd.Timestamp(dates[k])).days < 365)
+    annual = min(tail[-1][1] * freq, 1.35 * ttm)
+    return freq, annual / freq, is_special
 
 
 def earnings_dates(tickers: list[str], progress=print) -> dict[str, list[str]]:
@@ -65,9 +145,10 @@ def ticker_events(t: str, cik: int, sh: pd.DataFrame) -> list[dict]:
     dates = list(y.index)
     pos = {d: i for i, d in enumerate(dates)}
     fac = real_price_factor(y.splits)
-    shares = shares_asof(sh[sh.cik == cik], y.index)
+    shares = shares_asof(company_shares(sh, cik), y.index, backfill=cik not in NO_BACKFILL)
     divs = y[y.dividends > 0]
     ex_dates = list(divs.index)
+    amounts = [float(v) for v in divs.dividends]
     out = []
     for i, (ex, D) in enumerate(divs.dividends.items()):
         j = pos[ex]
@@ -75,14 +156,15 @@ def ticker_events(t: str, cik: int, sh: pd.DataFrame) -> list[dict]:
             continue
         e_day, x_day = dates[j - 2], dates[j + 1]
         s0 = float(y.close.iloc[j - 2])
-        recent = divs.dividends.iloc[max(0, i - 3): i + 1]
-        freq = frequency(ex_dates, i)
-        yld = float(np.median(recent)) * freq / s0
+        freq, regular, special = regular_dividend(ex_dates, amounts, i)
+        if freq is None:
+            continue                                             # no steady regular dividend to speak of
+        yld = regular * freq / s0
         cap = s0 * float(fac.iloc[j - 2]) * float(shares.iloc[j - 2]) if pd.notna(shares.iloc[j - 2]) else np.nan
         dvol = float((y.close * y.volume).iloc[max(0, j - 62): j - 1].median())
         out.append({"ticker": t, "cik": cik, "ex": ex, "entry": e_day, "exit": x_day, "div": float(D), "freq": freq,
                     "yield": yld, "s0": s0, "real_factor": float(fac.iloc[j - 2]), "cap": cap, "dollar_volume": dvol,
-                    "special": bool(len(recent) >= 3 and D > 1.8 * float(np.median(recent.iloc[:-1])))})
+                    "special": special})
     return out
 
 
@@ -112,6 +194,7 @@ def build(progress=print) -> pd.DataFrame:
             progress(f"  events: {k}/{len(cand)} tickers")
     ev = pd.DataFrame(rows)
     ev = ev[(ev.ex >= "2010-01-01") & (ev.cap >= MIN_CAP) & (ev["yield"] > MIN_YIELD)].copy()
+    ev = ev[~ev.special].copy()      # listed options are adjusted for special dividends: nothing to capture
     flags_f = cache_dir() / "hdc" / "sec_flags.csv"             # foreign filers (20-F / 40-F only)
     foreign = set(pd.read_csv(flags_f).query("foreign").ticker) if flags_f.exists() else set()
     ev = ev[~ev.ticker.isin(excluded(cand) | foreign | BDC) & (ev.dollar_volume >= MIN_DOLLAR_VOLUME)].copy()

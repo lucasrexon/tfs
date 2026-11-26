@@ -39,6 +39,14 @@ def matched(od, tt: pd.DataFrame) -> dict | None:
             "diff_se": float(d.std() / np.sqrt(len(d))), "e0_real": float(j.e0_r.mean()), "e0_model": float(j.e0_m.mean())}
 
 
+def top_yield(od) -> dict | None:
+    f = od / "top_yield.json"
+    if not f.exists():
+        return None
+    r = json.loads(f.read_text())
+    return {"metrics": r["metrics"], "picks": r["picks"].get("top5")}
+
+
 def main():
     cfg = load_config()
     od = resolve(cfg, "output") / "hdc"
@@ -57,7 +65,7 @@ def main():
     exercise = {k: {"n": int(len(g)), "kept": float(g.net.mean()), "assigned": float(g.assigned_net.mean())}
                 for k, g in (("rational", itm[itm.rational.astype(bool)]), ("other", itm[~itm.rational.astype(bool)]))}
     data = clean({**r, "curves": curves, "hist": {"edges": edges.round(4).tolist(), "counts": hist}, "exercise": exercise,
-                  "matched": matched(od, tt)})
+                  "matched": matched(od, tt), "top_yield": top_yield(od)})
     html = (resolve(cfg, "dashboard_page") / "hdc_template.html").read_text()
     out = resolve(cfg, "reports") / "hdc.html"
     out.write_text(html.replace("/*__DATA__*/null", json.dumps(data, separators=(",", ":"))))

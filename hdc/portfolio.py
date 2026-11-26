@@ -43,9 +43,12 @@ def year_tax(r: dict, ordinary: float, qualified: float, capital: float, carry: 
 
 def simulate(trades: list[dict], calendar: list[str], rate: pd.Series, costs: Costs, path: str = "kept",
              assign: np.ndarray | None = None, tax: str = "pre_tax", capital: float = CAPITAL,
-             fraction: float = FRACTION, max_open: int = MAX_OPEN, sweep: bool = False) -> dict:
+             fraction: float = FRACTION, max_open: int = MAX_OPEN, sweep: bool = False,
+             allowed: set[int] | None = None) -> dict:
     """path 'kept' (Scenario A: exit the day after the ex-date) or 'hold61' (Scenario B).
-    assign[i] True = trade i's call is exercised the evening before the ex-date (if in the money)."""
+    assign[i] True = trade i's call is exercised the evening before the ex-date (if in the money).
+    allowed: take only these trades (the ones a reference run took), so that after-tax runs hold the same
+    trades as the before-tax run instead of drifting onto a different set as the account size changes."""
     r = RATES[tax]
     by_entry: dict[str, list[int]] = {}
     for i, t in enumerate(trades):
@@ -81,6 +84,8 @@ def simulate(trades: list[dict], calendar: list[str], rate: pd.Series, costs: Co
         for i in sorted(by_entry.get(d, []), key=lambda i: -trades[i]["div"] / trades[i]["s0"]):
             if len(open_pos) >= max_open:
                 break
+            if allowed is not None and i not in allowed:
+                continue
             t = trades[i]
             use_assigned = assign is not None and assign[i] and t["paths"]["assigned"] is not None
             leg = t["paths"]["assigned"] if use_assigned else t["paths"][path]

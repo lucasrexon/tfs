@@ -195,7 +195,7 @@ const yrs = (new Date(D.period[1]) - new Date(D.period[0])) / 3.15576e10;
 const a00 = A["0.0"], a15x = A["0.15"], a100 = A["1.0"], ar = A.rational;
 const dragPre = a15x.pre_tax.cagr - a00.pre_tax.cagr, dragTax = a15x.A_short_term_offset.cagr - a00.A_short_term_offset.cagr;
 const helps = a100.pre_tax.cagr >= a00.pre_tax.cagr;
-const RL = D.real && D.real.per_trade ? D.real : null, EX = D.exercise, M = D.matched;
+const RL = D.real && D.real.per_trade ? D.real : null, EX = D.exercise, M = D.matched, TY = D.top_yield ? D.top_yield.metrics : null;
 const pts2 = v => Math.abs(v * 100).toFixed(2) + " points";
 const fitted = D.calibration.n >= 30, pts = v => Math.abs(v * 100).toFixed(1) + " points";
 const TEXT = {
@@ -203,6 +203,7 @@ const TEXT = {
     `<b>Before tax it works, a little.</b> ${pct(S.A_pre_tax.cagr)} a year with a ${pct(S.A_pre_tax.max_dd)} worst drawdown and a Sharpe ratio of ${f2(S.A_pre_tax.sharpe)}, against SPY's ${pct(B.spy_pre_tax.cagr)}, ${pct(B.spy_pre_tax.max_dd)} and ${f2(B.spy_pre_tax.sharpe)}. The average trade made ${pct(PT.spec_rule.avg, 2)} of the stock price and ${upct(PT.spec_rule.win)} of trades won.`,
     `<b>The call is what makes it work.</b> The same dates with no call made ${pct(PT.unhedged.avg, 2)} a trade, because the stock falls by about the dividend on the ex-date. The profit is the call's time value minus costs, not the dividend.`,
     `<b>Risk is much lower than buy-and-hold</b>: the worst drawdown is ${upct(1 - Math.abs(S.A_pre_tax.max_dd) / Math.abs(B.spy_pre_tax.max_dd))} smaller than SPY's and volatility ${upct(1 - S.A_pre_tax.vol / B.spy_pre_tax.vol)} lower, mostly because the money is in a trade only a few days at a time. As a 20% sleeve next to SPY it barely changes the risk (${pct(H.pre_tax.hybrid.max_dd)} vs ${pct(B.spy_pre_tax.max_dd)}) and ${H.pre_tax.hybrid.cagr <= B.spy_pre_tax.cagr ? "costs" : "adds"} ${pts(B.spy_pre_tax.cagr - H.pre_tax.hybrid.cagr)} a year of return.`,
+    TY ? `<b>Owning the 5 highest yielders instead, with no options,</b> returned ${pct(TY.top5_pre_tax.cagr)} a year before tax and ${pct(TY.top5_after_tax.cagr)} after, with a ${pct(TY.top5_pre_tax.max_dd)} worst drawdown and ${TY.top5_pre_tax.losing_years} losing years out of ${Object.keys(TY.top5_pre_tax.years).length}. That is ${TY.top5_pre_tax.cagr > S.A_pre_tax.cagr ? "more" : "less"} return than hedged capture with ${(TY.top5_pre_tax.max_dd / S.A_pre_tax.max_dd).toFixed(1)} times the drawdown, and ${pts(B.spy_pre_tax.cagr - TY.top5_pre_tax.cagr)} a year ${TY.top5_pre_tax.cagr < B.spy_pre_tax.cagr ? "behind" : "ahead of"} SPY. The highest yields are often about to be cut: Freeport in 2015 (−70% that year), Occidental in 2020 (−57%), Lumen in 2022 (−55%), Dow in 2025 (−37%).` : null,
     `<b>${dragPre >= 0 ? "Early exercise does not hurt." : "Early exercise costs little."}</b> With 15% of calls exercised early the return is ${pct(a15x.pre_tax.cagr, 2)} a year instead of ${pct(a00.pre_tax.cagr, 2)} (${dragPre >= 0 ? "+" : "−"}${Math.abs(dragPre * 100).toFixed(2)} points). If every holder exercised whenever it paid them (${upct(D.rational_share)} of trades), it would be ${pct(ar.pre_tax.cagr, 2)}, but the worst drawdown would shrink to ${pct(ar.pre_tax.max_dd)}. An exercised call loses the dividend but also skips the ex-date drop, so the seller gives up only the dividend minus the call's leftover time value: ${(Math.abs(EX.rational.assigned - EX.rational.kept) * 100).toFixed(2)}% a trade. The spec's rule, time value below the dividend, picks exactly the calls a rational holder <i>should</i> exercise.`,
     `<b>Taxes decide it.</b> In Scenario A the dividend is ordinary income at 37% while the stock-and-call part is a capital loss. If those losses can offset gains elsewhere, the after-tax return is ${pct(S.A_short_term_offset.cagr)} a year. In an account with no other gains, capital losses shelter only $3,000 of ordinary income a year, and the return becomes ${pct(S.A_short_term.cagr)}.`,
     `<b>Scenario B cannot get the 20% rates as designed.</b> A call that is in the money with under 30 days left is not a qualified covered call, so the hedged days do not count toward the 61-day test, and only 59 days of the dividend's 121-day window remain after the call is closed. Under actual US rules B is taxed like A (${pct(S.B_actual_law_offset.cagr)} after tax, against ${pct(S.B_as_specified_offset.cagr)} if 20% applied). Its higher pre-tax return comes from holding the stock unhedged for two months, with a ${pct(S.B_pre_tax.max_dd)} drawdown to match.`,
@@ -218,7 +219,7 @@ const TEXT = {
   real: `${RL ? `Real daily option prices for ${RL.n} events with downloaded data. A strike with no trade on the entry day is skipped; later days with no trade (${upct(RL.filled_share)} of trades had at least one) are filled from the model. These are last-trade prices, not quotes, so they say nothing about the bid-ask spread.` : "Real option prices are still downloading."} The model prices every call with an American binomial tree that includes the dividend, using 30-day realized volatility times ${D.calibration.used}${fitted ? `, the multiplier that best matches ${D.calibration.n} real call prices on their entry day (average miss $${(D.calibration.mean_abs_err || 0).toFixed(3)} a share)` : " (too few real prices yet to fit it)"}.`,
   cost: `The spec charges 0.05% per stock trade and $0.65 per contract. It charges nothing for the option's own bid-ask spread, and in-the-money calls on large caps typically trade 2–10¢ wide. Each option trade crosses half of it: once when selling the call and once when buying it back.`,
   method: [
-    `<b>Universe.</b> NYSE and Nasdaq common stocks of US companies that file with the SEC, worth at least $10 billion on the entry day (price × the latest SEC share count), with an indicated yield above 3%, trading at least $25 million a day. Partnerships, preferred shares, foreign filers and business development companies are left out, as the S&P 500 does. No free source has point-in-time S&P 500 membership, so this stands in for it: ${D.n_tickers} companies over the period.`,
+    `<b>Universe.</b> NYSE and Nasdaq common stocks of US companies that file with the SEC, worth at least $10 billion on the entry day (price × the latest SEC share count), with an indicated yield above 3% (the latest regular dividend × payments a year, capped at 1.35× the past year's regular payments), trading at least $25 million a day. Special dividends, and payers without a steady schedule, are left out: listed options are adjusted for special dividends, so there is nothing to capture. Companies that moved to a new SEC registration (Exxon in 2026, BlackRock in 2024, and a few others) keep their earlier share counts. Partnerships, preferred shares, foreign filers and business development companies are left out, as the S&P 500 does. No free source has point-in-time S&P 500 membership, so this stands in for it: ${D.n_tickers} companies over the period.`,
     `<b>Earnings filter.</b> Events with an earnings release within 2 trading days of the ex-date are dropped (Yahoo earnings dates): ${(D.n_events[0] - D.n_events[1]).toLocaleString()} of ${D.n_events[0].toLocaleString()}.`,
     `<b>Trades.</b> Buy at the close 2 trading days before the ex-date, sell the 1-strike in-the-money call if its time value is below the dividend, otherwise the 2-strike one, otherwise skip (${(D.skips["rule not met"] || 0).toLocaleString()} events). Expiry: the first listed Friday 7–14 days out; before 2013 only monthly expiries are assumed, so ${(D.skips["no 7-14 day expiry"] || 0).toLocaleString()} events had none. Exit at the close the day after the ex-date, or leave a deep in-the-money call (under 3¢ of time value) to be assigned at expiry.`,
     `<b>Option prices.</b> Yahoo has no historical option prices, so 2010–2024 calls are priced by the model. Dec 2024 on, real Massive daily prices are compared on the same events.`,
@@ -334,7 +335,7 @@ function hbar(hostId, tipId, boxId, items) {
 // ------------------------------------------------------------------ header and verdict
 document.getElementById("eyebrow").textContent = `Backtest · US large caps yielding over 3% · ${D.period[0].slice(0, 7)} to ${D.period[1].slice(0, 7)}`;
 document.getElementById("lede").textContent = `${D.per_trade.spec_rule.n.toLocaleString()} trades on ${D.n_tickers} large US dividend stocks. Buy 2 days before the ex-date, sell a 1–2 strike in-the-money call with 7–14 days left whose time value is below the dividend, exit the day after the ex-date.`;
-document.getElementById("verdict").innerHTML = TEXT.verdict.map(s => `<li>${s}</li>`).join("");
+document.getElementById("verdict").innerHTML = TEXT.verdict.filter(Boolean).map(s => `<li>${s}</li>`).join("");
 const tiles = [
   ["Return a year, before tax", S.A_pre_tax.cagr, `SPY: ${pct(B.spy_pre_tax.cagr)}`],
   ["After 37% tax, losses usable elsewhere", S.A_short_term_offset.cagr, `stand-alone account: ${pct(S.A_short_term.cagr)}`],
@@ -359,6 +360,9 @@ const ROWS = [
   ["SPY buy-and-hold, dividends reinvested", B.spy_pre_tax, false, true],
   ["  after 20% tax on dividends", B.spy_after_div_tax, false, true],
   ["High-yield large caps, equal weight, buy-and-hold", B.high_yield_basket, false, true],
+  ...(TY ? [["Top 5 yielders, no options, rebalanced yearly, before tax", TY.top5_pre_tax, false, true],
+            ["  after tax (20% on dividends and gains, 37% on REIT dividends)", TY.top5_after_tax, false, true],
+            ["Top 10 yielders, no options, rebalanced yearly, before tax", TY.top10_pre_tax, false, true]] : []),
 ];
 document.getElementById("results-note").textContent = `$1 million start. Each trade buys stock worth 10% of the account in whole 100-share lots, at most 10 open at once, and cash earns the 13-week T-bill rate. Taxes are paid each December. Drawdown and Sharpe on after-tax rows include those year-end payments.`;
 document.getElementById("rtable").innerHTML = `<thead><tr><th>Strategy</th><th class="r">Return a year</th><th class="r">Sharpe</th><th class="r">Worst drawdown</th><th class="r">Volatility</th><th class="r">Win rate</th><th class="r">Trades</th></tr></thead><tbody>` +
@@ -379,7 +383,8 @@ lineChart("d-svg", "d-tip", "d-chart", C.dates, DS.map(s => ({label: s[1], color
 const red = (a, b) => 1 - Math.abs(a) / Math.abs(b);
 document.getElementById("risk-table").innerHTML = `<thead><tr><th>Compared</th><th class="r">Worst drawdown</th><th class="r">vs</th><th class="r">Drawdown cut</th><th class="r">Volatility cut</th></tr></thead><tbody>` +
   [["Hedged capture vs SPY", S.A_pre_tax, B.spy_pre_tax], ["Hedged capture vs the high-yield basket", S.A_pre_tax, B.high_yield_basket],
-   ["Hedged capture vs the same trades with no call", S.A_pre_tax, S.unhedged_pre_tax], ["Hybrid vs SPY", H.pre_tax.hybrid, B.spy_pre_tax]]
+   ["Hedged capture vs the same trades with no call", S.A_pre_tax, S.unhedged_pre_tax], ["Hybrid vs SPY", H.pre_tax.hybrid, B.spy_pre_tax],
+   ...(TY ? [["Hedged capture vs the top 5 yielders", S.A_pre_tax, TY.top5_pre_tax]] : [])]
   .map(([n, a, b]) => `<tr><td>${n}</td><td class="r num">${pct(a.max_dd)}</td><td class="r num">${pct(b.max_dd)}</td><td class="r num">${upct(red(a.max_dd, b.max_dd))}</td><td class="r num">${upct(red(a.vol, b.vol))}</td></tr>`).join("") + "</tbody>";
 
 // ------------------------------------------------------------------ one trade
@@ -472,6 +477,7 @@ document.getElementById("files-table").innerHTML = `<thead><tr><th>File</th><th>
   ["hdc/real_options.py", "Real option contracts and daily prices from Massive (Dec 2024 on)"],
   ["hdc/trades.py", "Net profit of one trade on every path: kept, left to expiry, assigned early, held 62 days, no call; the 61-day dividend test"],
   ["hdc/portfolio.py", "Account simulation, year-end taxes with the capital-loss rules, metrics"],
+  ["hdc/top_yield.py", "No options: the 5 or 10 highest-yielding stocks, rebalanced yearly, before and after tax"],
   ["hdc/run.py · hdc/report.py", "Every analysis, then this page"]].map(([f, d]) => `<tr><td><code>${f}</code></td><td>${d}</td></tr>`).join("") + "</tbody>";
 document.getElementById("code-pnl").textContent = TEXT.code;
 </script>

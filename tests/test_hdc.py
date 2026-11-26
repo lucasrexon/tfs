@@ -97,3 +97,50 @@ def test_expiry_calendar():
     days = [d.strftime("%Y-%m-%d") for d in pd.bdate_range("2011-01-01", "2025-12-31")]
     assert listed_expiry("2011-03-04", days) == "2011-03-18" and listed_expiry("2011-03-14", days) is None
     assert listed_expiry("2025-04-10", days) == "2025-04-18"
+
+
+def test_share_history_joins_predecessor_and_backfills_three_years():
+    from hdc.events import company_shares, shares_asof
+    sh = pd.DataFrame({"cik": [34088, 34088, 2115436], "end": ["2024-12-31", "2026-03-31", "2026-06-30"],
+                       "shares": [4.3e9, 4.2e9, 4.1e9], "loc": "US-TX"})
+    s = company_shares(sh, 2115436)
+    assert list(s.end) == ["2024-12-31", "2026-03-31", "2026-06-30"]
+    one = sh[sh.cik == 2115436]
+    got = shares_asof(one, pd.Index(["2022-01-03", "2024-01-02", "2026-07-01"]))
+    assert pd.isna(got.iloc[0]) and got.iloc[1] == 4.1e9 and got.iloc[2] == 4.1e9
+
+
+def test_regular_dividend_ignores_specials_and_irregular_payers():
+    from hdc.events import regular_dividend
+    q = ["2023-03-16", "2023-06-15", "2023-09-14", "2023-11-10", "2023-12-14"]     # Corebridge: two specials
+    f, reg, sp = regular_dividend(q, [0.23, 0.85, 0.23, 1.16, 0.23], 4)
+    assert (f, reg, sp) == (4, 0.23, False)
+    assert regular_dividend(q, [0.23, 0.85, 0.23, 1.16, 0.23], 3)[2] is True
+    hca = ["2012-02-14", "2012-10-31", "2012-12-13"]                                  # specials only
+    assert regular_dividend(hca, [2.0, 2.5, 2.0], 2)[0] is None
+    met = ["2009-11-04", "2010-11-04", "2011-11-07"]                                  # annual payer
+    assert regular_dividend(met, [0.74, 0.74, 0.74], 2)[:2] == (1, 0.74)
+    kdp = ["2017-06-14", "2017-09-14", "2017-12-14", "2018-03-20", "2018-07-10", "2018-10-04"]
+    f, reg, sp = regular_dividend(kdp, [0.58, 0.58, 0.58, 0.58, 103.75, 0.15], 5)     # merger special, then a cut
+    assert f == 4 and reg == 0.15 and not sp
+
+
+def test_regular_dividend_merges_a_quarter_paid_in_two_parts():
+    from hdc.events import regular_dividend
+    d = ["2015-12-29", "2016-03-29", "2016-06-28", "2016-07-07", "2016-09-28", "2016-12-28"]
+    assert regular_dividend(d, [1.2, 1.2, 1.2, 0.144, 1.056, 1.2], 5)[:2] == (4, 1.2)
+    assert regular_dividend(d, [1.2, 1.2, 1.2, 0.144, 1.056, 1.2], 4)[:2] == (4, 1.056)
+
+
+def test_regular_dividend_frequent_specials_and_extra_payments():
+    from hdc.events import regular_dividend
+    afg = ["2020-10-14", "2021-01-14", "2021-04-14", "2021-07-14", "2021-10-14", "2021-11-12", "2021-12-22", "2022-01-13", "2022-03-14", "2022-04-13", "2022-05-19",
+           "2022-07-14", "2022-10-13", "2022-11-14"]
+    amt = [0.5, 0.5, 0.5, 0.5, 0.56, 4.0, 2.0, 0.56, 2.0, 0.56, 8.0, 0.56, 0.63, 2.0]
+    assert regular_dividend(afg, amt, 13)[2] is True                # the Nov 2022 special
+    f, reg, _ = regular_dividend(afg, amt, 12)
+    assert f == 4 and abs(reg - 0.63) < 1e-9
+    vno = ["2011-11-09", "2012-01-26", "2012-05-10", "2012-08-08", "2012-11-07", "2012-12-06", "2013-01-24"]
+    va = [0.505, 0.505, 0.505, 0.505, 0.505, 0.732, 0.534]
+    assert regular_dividend(vno, va, 5)[2] is True                  # off-schedule extra payment
+    assert regular_dividend(vno, va, 6)[:2] == (4, 0.534)
